@@ -14,9 +14,9 @@ echo -e "${YELLOW}--------------------------------------------------------------
 
 conntrack -L 2>/dev/null | grep -oP 'src=\K[0-9.]+' | sort | uniq -c | sort -rn | head -n 10 | while read count ip; do
     conf_file=$(grep -rl "$ip" /etc/pve/nodes/*/qemu-server/*.conf 2>/dev/null | head -n 1)
-    vmid=$(basename "$conf_file" .conf)
-
-    if [[ -n "$vmid" ]]; then
+    
+    if [[ -n "$conf_file" && -f "$conf_file" ]]; then
+        vmid=$(basename "$conf_file" .conf)
         echo -e "${GREEN}$ip${NC} | ${YELLOW}$count connections${NC} | VMID: ${CYAN}$vmid${NC}"
     else
         echo -e "${GREEN}$ip${NC} | ${YELLOW}$count connections${NC} | VMID: ${RED}not found${NC}"
