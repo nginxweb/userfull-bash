@@ -16,7 +16,8 @@ echo -e "${CYAN}Top 10 IPs with most active connections and their corresponding 
 echo -e "${YELLOW}---------------------------------------------------------------${NC}"
 
 conntrack -L | grep -oP 'src=\K[0-9.]+' | sort | uniq -c | sort -rn | head -n 10 | while read count ip; do
-    vmid=$(grep -rl "$ip" /etc/pve/nodes/*/qemu-server/*.conf 2>/dev/null | sed -n 's/.*\/\([0-9]\+\)\.conf/\1/p')
+    vmid=$(grep -rl "$ip" /etc/pve/nodes/*/qemu-server/*.conf 2>/dev/null | \
+           sed -n 's/.*\/\([0-9]\+\)\.conf/\1/p' | head -n 1)
     if [[ -n "$vmid" ]]; then
         echo -e "${GREEN}$ip${NC} | ${YELLOW}$count connections${NC} | VMID: ${CYAN}$vmid${NC}"
     else
