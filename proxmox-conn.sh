@@ -1,6 +1,10 @@
 #!/bin/bash
 
 # Script by: Eisa Mohammadzadeh
+# Description:
+# This script lists the top 10 IP addresses with the highest number of active connections (using conntrack),
+# then matches those IPs to their corresponding VMIDs on a Proxmox server (if available).
+# Useful for network monitoring, attack detection, or general traffic analysis on virtual machines.
 
 RED="\e[31m"
 GREEN="\e[32m"
