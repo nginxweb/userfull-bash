@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Script Name: show_services.sh
-# Description: Displays running and stopped services in colorful tables.
+# Description: Displays running and stopped services in colorful tables along with counts.
 # Compatible with: CentOS 7, AlmaLinux, Ubuntu, Debian
 # Author: Eisa Mohammadzadeh
 
@@ -23,12 +23,16 @@ fi
 active_services=$(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}')
 inactive_services=$(systemctl list-units --type=service --state=inactive --no-pager --no-legend | awk '{print $1}')
 
-# Function to print a colored table
+# Convert to arrays
+IFS=$'\n' read -rd '' -a active_array <<<"$active_services"
+IFS=$'\n' read -rd '' -a inactive_array <<<"$inactive_services"
+
+# Function to print a colored table with count
 print_table() {
     local title="$1"
     local color="$2"
-    shift 2
-    local services=("$@")
+    local services=("${!3}")
+    local count=${#services[@]}
 
     echo -e "${color}==================== ${title} ====================${NC}"
     printf "${color}%-40s${NC}\n" "Service Name"
@@ -36,13 +40,12 @@ print_table() {
     for svc in "${services[@]}"; do
         printf "%-40s\n" "$svc"
     done
+    echo -e "${color}Total: $count service(s)${NC}"
     echo
 }
 
 # Display running services
-IFS=$'\n' read -rd '' -a active_array <<<"$active_services"
-print_table "Running Services" "$GREEN" "${active_array[@]}"
+print_table "Running Services" "$GREEN" active_array[@]
 
 # Display stopped services
-IFS=$'\n' read -rd '' -a inactive_array <<<"$inactive_services"
-print_table "Stopped Services" "$RED" "${inactive_array[@]}"
+print_table "Stopped Services" "$RED" inactive_array[@]
