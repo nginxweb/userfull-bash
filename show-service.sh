@@ -37,11 +37,12 @@ get_service_color() {
     fi
 }
 
-# Table printer
+# Table printer (without local -n)
 print_table() {
     local title="$1"
     local default_color="$2"
-    local -n list=$3
+    shift 2
+    local list=("$@")
     local count=${#list[@]}
 
     echo -e "${default_color}==================== ${title} ====================${NC}"
@@ -87,5 +88,5 @@ else
 fi
 
 # --- Output ---
-print_table "Running Services" "$GREEN" running_services
-print_table "Stopped Services" "$RED" stopped_services
+print_table "Running Services" "$GREEN" "${running_services[@]}"
+print_table "Stopped Services" "$RED" "${stopped_services[@]}"
