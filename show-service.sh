@@ -65,7 +65,7 @@ if $use_systemctl; then
     done < <(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}')
 
     while IFS= read -r svc; do
-        [[ "$svc" == *@.service ]] && continue  # Skip template units
+        [[ "$svc" == *@.service ]] && continue
         if ! systemctl is-active --quiet "$svc"; then
             stopped_services+=("$svc")
         fi
@@ -73,4 +73,19 @@ if $use_systemctl; then
 else
     if command -v service &> /dev/null; then
         while IFS= read -r name; do
-            status=$(service "$name" status 2>/
+            status=$(service "$name" status 2>/dev/null)
+            if echo "$status" | grep -qi "running"; then
+                running_services+=("$name")
+            else
+                stopped_services+=("$name")
+            fi
+        done < <(ls /etc/init.d)
+    else
+        echo -e "${RED}No service manager detected.${NC}"
+        exit 1
+    fi
+fi
+
+# --- Output ---
+print_table "Running Services" "$GREEN" running_services
+print_table "Stopped Services" "$RED" stopped_services
