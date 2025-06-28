@@ -56,3 +56,13 @@ else
         echo "⚠️ Could not restart SSH service."
     fi
 fi
+
+# ✅ Show current SSH port in green
+ssh_config="/etc/ssh/sshd_config"
+current_port=$(grep -E "^\s*Port\s+[0-9]+" "$ssh_config" | grep -vE '^\s*#' | awk '{print $2}' | tail -n1)
+
+if [ -n "$current_port" ]; then
+    echo -e "\n📢 Current SSH Port: \e[32m$current_port\e[0m"
+else
+    echo -e "\n⚠️ Could not detect SSH port from $ssh_config"
+fi
