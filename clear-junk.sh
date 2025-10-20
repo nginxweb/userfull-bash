@@ -18,25 +18,21 @@ echo -e "${BLUE}===== STARTING MAINTENANCE SCRIPT =====${NC}"
 echo -e "${YELLOW}\n[STEP 1] Cleaning /backup folder, keeping the newest folder ~7 days old${NC}"
 keep=$(find /backup -maxdepth 1 -type d -mtime +6 | sort | tail -n 1)
 echo -e "Keeping folder: ${GREEN}$(basename "$keep")${NC}"
-
-# Remove everything except the folder to keep, show each removed item
 find /backup -mindepth 1 -not -name "$(basename "$keep")" -print -exec rm -rf {} \;
 echo -e "${GREEN}Backup cleanup completed!${NC}"
 
 # Step 2: Truncate LSWS log files (*.log.*)
 echo -e "${YELLOW}\n[STEP 2] Truncating LSWS log files (*.log.*)${NC}"
-# Show each log file being truncated
 find /usr/local/lsws/logs -type f -name '*.log.*' -print -exec truncate -s 0 {} \;
 echo -e "${GREEN}Log truncation completed!${NC}"
 
-# Step 3: Clean LSWS cache data
-echo -e "${YELLOW}\n[STEP 3] Cleaning LSWS cache data${NC}"
-# Remove all files/folders inside each priv folder, suppress errors
-find /usr/local/lsws/cachedata/*/priv -mindepth 1 -print -exec rm -rf {} + 2>/dev/null
+# Step 3: Clean LSWS cache data (quietly)
+echo -e "${YELLOW}\n[STEP 3] Cleaning LSWS cache data...${NC}"
+find /usr/local/lsws/cachedata/*/priv -mindepth 1 -exec rm -rf {} + 2>/dev/null
 echo -e "${GREEN}Cache cleanup completed!${NC}"
 
 # Step 4: Show current disk usage for /
 echo -e "${YELLOW}\n[STEP 4] Current disk usage for /${NC}"
-du -sh / | awk '{print "'${BLUE}'" $1 "'${NC}' used in /"}'
+df -h / | awk 'NR==2 {print "'${BLUE}'" $3 " used, " $4 " available in /'${NC}'"}'
 
 echo -e "${BLUE}\n===== MAINTENANCE SCRIPT COMPLETED =====${NC}"
