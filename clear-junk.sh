@@ -1,7 +1,7 @@
 #!/bin/bash
 # Author: Eisa Mohammadzadeh
 # Company: ultahost.com
-# Description: Maintenance script to clean backups, LSWS logs, and LSWS cache.
+# Description: Maintenance script to clean backups, LSWS logs, LSWS cache, and large system logs.
 
 # Color codes
 RED='\033[0;31m'
@@ -40,9 +40,33 @@ rm -rf /usr/local/lsws/cachedata/* 2>/dev/null
 echo -e "${GREEN}Cache cleanup completed successfully!${NC}"
 
 # -------------------------
-# STEP 4: Show root disk usage
+# STEP 4: Find and truncate large log files in /var/log
 # -------------------------
-echo -e "${YELLOW}\n[STEP 4] Current disk usage for /${NC}"
+echo -e "${YELLOW}\n[STEP 4] Finding and truncating large log files (>20MB) in /var/log${NC}"
+
+# Find and list large log files
+large_logs=$(find /var/log -type f -size +20M 2>/dev/null)
+
+if [ -z "$large_logs" ]; then
+  echo -e "${GREEN}No log files larger than 20MB found in /var/log${NC}"
+else
+  echo -e "${BLUE}Large log files found:${NC}"
+  find /var/log -type f -size +20M -exec ls -lh {} \; 2>/dev/null
+  
+  # Count files before truncation
+  file_count=$(echo "$large_logs" | wc -l)
+  echo -e "${YELLOW}Truncating $file_count large log file(s)...${NC}"
+  
+  # Truncate the files
+  find /var/log -type f -size +20M -exec truncate -s 0 {} \; 2>/dev/null
+  
+  echo -e "${GREEN}Large log files have been truncated successfully!${NC}"
+fi
+
+# -------------------------
+# STEP 5: Show root disk usage
+# -------------------------
+echo -e "${YELLOW}\n[STEP 5] Current disk usage for /${NC}"
 df -h / | awk 'NR==2 {print "'${BLUE}'" $3 " used, " $4 " available in /'${NC}'"}'
 
 echo -e "${BLUE}\n===== MAINTENANCE SCRIPT COMPLETED =====${NC}"
