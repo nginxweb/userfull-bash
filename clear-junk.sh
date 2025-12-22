@@ -1,7 +1,7 @@
 #!/bin/bash
 # Author: Eisa Mohammadzadeh
 # Company: ultahost.com
-# Description: Maintenance script to clean backups, LSWS logs, LSWS cache, and large system logs.
+# Description: Maintenance script to clean backups, LSWS logs, LSWS cache, large system logs, and journalctl logs.
 
 # Color codes
 RED='\033[0;31m'
@@ -44,7 +44,6 @@ echo -e "${GREEN}Cache cleanup completed successfully!${NC}"
 # -------------------------
 echo -e "${YELLOW}\n[STEP 4] Finding and truncating large log files (>20MB) in /var/log${NC}"
 
-# Find and list large log files
 large_logs=$(find /var/log -type f -size +20M 2>/dev/null)
 
 if [ -z "$large_logs" ]; then
@@ -53,20 +52,27 @@ else
   echo -e "${BLUE}Large log files found:${NC}"
   find /var/log -type f -size +20M -exec ls -lh {} \; 2>/dev/null
   
-  # Count files before truncation
   file_count=$(echo "$large_logs" | wc -l)
   echo -e "${YELLOW}Truncating $file_count large log file(s)...${NC}"
   
-  # Truncate the files
   find /var/log -type f -size +20M -exec truncate -s 0 {} \; 2>/dev/null
-  
   echo -e "${GREEN}Large log files have been truncated successfully!${NC}"
 fi
 
 # -------------------------
-# STEP 5: Show root disk usage
+# STEP 5: Clean journalctl logs
 # -------------------------
-echo -e "${YELLOW}\n[STEP 5] Current disk usage for /${NC}"
+echo -e "${YELLOW}\n[STEP 5] Rotating and vacuuming journalctl logs${NC}"
+
+journalctl --rotate
+journalctl --vacuum-time=1s
+
+echo -e "${GREEN}journalctl logs cleaned successfully!${NC}"
+
+# -------------------------
+# STEP 6: Show root disk usage
+# -------------------------
+echo -e "${YELLOW}\n[STEP 6] Current disk usage for /${NC}"
 df -h / | awk 'NR==2 {print "'${BLUE}'" $3 " used, " $4 " available in /'${NC}'"}'
 
 echo -e "${BLUE}\n===== MAINTENANCE SCRIPT COMPLETED =====${NC}"
