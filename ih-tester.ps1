@@ -2,14 +2,14 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Website Network Diagnostic Tool"
+$form.Text = "ابزار عیب‌یابی شبکه وب‌سایت"
 $form.Size = New-Object System.Drawing.Size(500,260)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 
 $label = New-Object System.Windows.Forms.Label
-$label.Text = "Enter customer website domain name:"
+$label.Text = "نام دامنه وب‌سایت مشتری را وارد کنید:"
 $label.AutoSize = $true
 $label.Location = New-Object System.Drawing.Point(20,20)
 
@@ -24,7 +24,7 @@ $statusLabel.Location = New-Object System.Drawing.Point(20,80)
 $statusLabel.ForeColor = [System.Drawing.Color]::Blue
 
 $button = New-Object System.Windows.Forms.Button
-$button.Text = "Start Test"
+$button.Text = "شروع تست"
 $button.Size = New-Object System.Drawing.Size(120,30)
 $button.Location = New-Object System.Drawing.Point(180,110)
 
@@ -60,11 +60,12 @@ $button.Add_Click({
 
     $domain = $textBox.Text.Trim()
     if (!$domain) {
-        [System.Windows.Forms.MessageBox]::Show("Domain name is empty","Error")
+        [System.Windows.Forms.MessageBox]::Show("نام دامنه خالی است","خطا")
         return
     }
 
-    $statusLabel.Text = "Test started... please wait"
+    $statusLabel.Text = "لطفا منتظر بمانید تا تست تکمیل شود..."
+    $button.Enabled = $false
     $form.Refresh()
 
     $startTime = Get-Date
@@ -81,6 +82,8 @@ $button.Add_Click({
     Write-Log "=================================================="
 
     # IP و ISP مشتری
+    $statusLabel.Text = "دریافت اطلاعات IP..."
+    $form.Refresh()
     try {
         $clientInfo = Invoke-RestMethod -Uri "https://www.nginxweb.ir/ip.php?country" -TimeoutSec 5
         Write-Log "Client Public IP Info:"
@@ -92,12 +95,16 @@ $button.Add_Click({
     Write-Log "=================================================="
 
     # Ping
+    $statusLabel.Text = "در حال انجام تست Ping..."
+    $form.Refresh()
     Write-Log "Ping Test (timeout 4 seconds):"
     cmd /c "ping -n 4 -w 1000 $domain" | ForEach-Object { Write-Log $_ }
 
     Write-Log "=================================================="
 
     # تست پورت‌ها
+    $statusLabel.Text = "در حال آزمایش پورت‌ها..."
+    $form.Refresh()
     Write-Log "Port Connectivity Tests:"
     Write-Log "TCP Port 80 (HTTP): $(Test-TcpPort -hostname $domain -port 80 -timeoutMs 5000)"
     Write-Log "TCP Port 443 (HTTPS): $(Test-TcpPort -hostname $domain -port 443 -timeoutMs 5000)"
@@ -107,12 +114,16 @@ $button.Add_Click({
     Write-Log "=================================================="
 
     # Traceroute
+    $statusLabel.Text = "در حال اجرای Traceroute..."
+    $form.Refresh()
     Write-Log "Traceroute (max 30 hops):"
     cmd /c "tracert -d $domain" | ForEach-Object { Write-Log $_ }
 
     Write-Log "=================================================="
 
     # HTTP
+    $statusLabel.Text = "در حال تست HTTP..."
+    $form.Refresh()
     Write-Log "HTTP Request Test (timeout 10 seconds):"
     try {
         $req = Invoke-WebRequest -Uri "http://$domain" -UseBasicParsing -TimeoutSec 10
@@ -123,6 +134,8 @@ $button.Add_Click({
     }
 
     # HTTPS
+    $statusLabel.Text = "در حال تست HTTPS..."
+    $form.Refresh()
     Write-Log "HTTPS Request Test (timeout 10 seconds):"
     try {
         $req = Invoke-WebRequest -Uri "https://$domain" -UseBasicParsing -TimeoutSec 10
@@ -138,14 +151,17 @@ $button.Add_Click({
     Write-Log "End Time: $endTime"
     Write-Log "Test Status: Completed"
 
+    $statusLabel.Text = "تست تکمیل شد"
+    $form.Refresh()
+    
     [System.Windows.Forms.MessageBox]::Show(
-        "All tests completed successfully`nResult saved to:`n$filePath",
-        "Test Finished"
+        "تمامی تست‌ها با موفقیت انجام شدند`nفایل گزارش ایجاد شده در مسیر:`n$filePath`n`nلطفا فایل گزارش را برای تیم پشتیبانی بفرستید.",
+        "تست به پایان رسید"
     )
 
     $statusLabel.Text = ""
-    Start-Sleep -Seconds 1
-    $form.Close()
+    $button.Enabled = $true
+    $textBox.Text = ""
 })
 
 $form.ShowDialog()
