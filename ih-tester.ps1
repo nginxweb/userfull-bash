@@ -101,12 +101,13 @@ $button.Add_Click({
         return
     }
     
-    # بررسی فرمت دامنه - regex اصلاح شده
-    # این regex دامنه‌های معتبر بین‌المللی و ایرانی را می‌پذیرد
-    if ($domain -notmatch "^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$") {
+    # بررسی فرمت دامنه - regex بسیار ساده شده
+    # این regex دامنه‌های معمولی را می‌پذیرد
+    if ($domain -notmatch "^[a-zA-Z0-9][a-zA-Z0-9\-\.]+[a-zA-Z0-9]\.[a-zA-Z]{2,}$") {
         [System.Windows.Forms.MessageBox]::Show(
             "فرمت دامنه وارد شده صحیح نیست." + 
-            "`nلطفاً دامنه را به صورت صحیح وارد کنید، مثال: example.com یا example.ir",
+            "`nلطفاً دامنه را به صورت صحیح وارد کنید." +
+            "`nمثال‌ها: example.com یا example.ir یا sub.example.com",
             "فرمت دامنه نامعتبر",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Warning
