@@ -10,7 +10,7 @@ $form.MaximizeBox = $false
 $form.Font = New-Object System.Drawing.Font("Tahoma", 10)
 
 $label = New-Object System.Windows.Forms.Label
-$label.Text = "نام دامنه وب سایت خود را بدون هیچ اضافاتی وارد کنید:"
+$label.Text = "نام دامنه وب‌سایت مشتری را وارد کنید (بدون http/https/www):"
 $label.AutoSize = $true
 $label.Location = New-Object System.Drawing.Point(20, 20)
 $label.Font = New-Object System.Drawing.Font("Tahoma", 10, [System.Drawing.FontStyle]::Regular)
@@ -101,11 +101,12 @@ $button.Add_Click({
         return
     }
     
-    # بررسی فرمت دامنه
-    if ($domain -notmatch "^[a-zA-Z0-9]+([\-\.]{1}[a-zA-Z0-9]+)*\.[a-zA-Z]{2,}$") {
+    # بررسی فرمت دامنه - regex اصلاح شده
+    # این regex دامنه‌های معتبر بین‌المللی و ایرانی را می‌پذیرد
+    if ($domain -notmatch "^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$") {
         [System.Windows.Forms.MessageBox]::Show(
             "فرمت دامنه وارد شده صحیح نیست." + 
-            "`nلطفاً دامنه را به صورت صحیح وارد کنید، مثال: example.com",
+            "`nلطفاً دامنه را به صورت صحیح وارد کنید، مثال: example.com یا example.ir",
             "فرمت دامنه نامعتبر",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Warning
@@ -225,13 +226,12 @@ $button.Add_Click({
 
     Write-Log "=================================================="
     
-    # تست MX Records - اصلاح شده
+    # تست MX Records
     $statusLabel.Text = "در حال بررسی MX Records..."
     $form.Refresh()
     Write-Log "Mail Exchange (MX) Records Test:"
     try {
-        # استفاده از $() برای متغیر در رشته
-        Write-Log "MX Records for $( $domain ):"
+        Write-Log "MX Records for $domain :"
         $mxRecords = nslookup -type=mx $domain 2>$null
         if ($mxRecords) {
             $mxRecords | ForEach-Object { Write-Log $_ }
