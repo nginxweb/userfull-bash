@@ -100,20 +100,6 @@ $button.Add_Click({
         )
         return
     }
-    
-    # بررسی فرمت دامنه - regex بسیار ساده شده
-    # این regex دامنه‌های معمولی را می‌پذیرد
-    if ($domain -notmatch "^[a-zA-Z0-9][a-zA-Z0-9\-\.]+[a-zA-Z0-9]\.[a-zA-Z]{2,}$") {
-        [System.Windows.Forms.MessageBox]::Show(
-            "فرمت دامنه وارد شده صحیح نیست." + 
-            "`nلطفاً دامنه را به صورت صحیح وارد کنید." +
-            "`nمثال‌ها: example.com یا example.ir یا sub.example.com",
-            "فرمت دامنه نامعتبر",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Warning
-        )
-        return
-    }
 
     $statusLabel.Text = "لطفا منتظر بمانید تا تست تکمیل شود..."
     $button.Enabled = $false
