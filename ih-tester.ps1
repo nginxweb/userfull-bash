@@ -10,7 +10,7 @@ $form.MaximizeBox = $false
 $form.Font = New-Object System.Drawing.Font("Tahoma", 10)
 
 $label = New-Object System.Windows.Forms.Label
-$label.Text = "نام دامنه وب‌سایت مشتری را وارد کنید (بدون http/https/www):"
+$label.Text = "آدرس وب سایت خود را جهت تست وارد کنید فقط نام دامنه وارد شود:"
 $label.AutoSize = $true
 $label.Location = New-Object System.Drawing.Point(20, 20)
 $label.Font = New-Object System.Drawing.Font("Tahoma", 10, [System.Drawing.FontStyle]::Regular)
