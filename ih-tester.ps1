@@ -230,9 +230,10 @@ $button.Add_Click({
     $form.Refresh()
     Write-Log "Mail Exchange (MX) Records Test:"
     try {
-        $mxRecords = nslookup -type=mx $domain 2>$null
+        # استفاده از روش ایمن‌تر برای اجرای nslookup
+        $mxRecords = & nslookup -type=mx $domain 8.8.8.8 2>$null
         if ($mxRecords) {
-            Write-Log "MX Records for $domain:"
+            Write-Log "MX Records for ${domain}:"
             $mxRecords | ForEach-Object { Write-Log $_ }
         } else {
             Write-Log "No MX records found or failed to retrieve"
