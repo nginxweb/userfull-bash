@@ -82,22 +82,9 @@ $button.Add_Click({
 
     $domain = $textBox.Text.Trim()
     
-    # بررسی وجود دامنه
+    # فقط بررسی وجود دامنه
     if (!$domain) {
         [System.Windows.Forms.MessageBox]::Show("نام دامنه خالی است", "خطا", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
-        return
-    }
-    
-    # بررسی عدم وجود http/https/www در دامنه
-    if ($domain -match "^(http://|https://|www\.)") {
-        [System.Windows.Forms.MessageBox]::Show(
-            "لطفاً آدرس دامنه را بدون http:// ، https:// یا www وارد کنید." + 
-            "`nمثال صحیح: example.com" + 
-            "`nمثال نادرست: https://www.example.com",
-            "فرمت دامنه نادرست",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Warning
-        )
         return
     }
 
