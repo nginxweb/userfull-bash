@@ -3,32 +3,40 @@ Add-Type -AssemblyName System.Drawing
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "ابزار عیب‌یابی شبکه وب‌سایت"
-$form.Size = New-Object System.Drawing.Size(500,260)
+$form.Size = New-Object System.Drawing.Size(500, 280)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
+$form.Font = New-Object System.Drawing.Font("Tahoma", 10)
 
 $label = New-Object System.Windows.Forms.Label
 $label.Text = "نام دامنه وب‌سایت مشتری را وارد کنید:"
 $label.AutoSize = $true
-$label.Location = New-Object System.Drawing.Point(20,20)
+$label.Location = New-Object System.Drawing.Point(20, 20)
+$label.Font = New-Object System.Drawing.Font("Tahoma", 10, [System.Drawing.FontStyle]::Regular)
 
 $textBox = New-Object System.Windows.Forms.TextBox
-$textBox.Size = New-Object System.Drawing.Size(440,20)
-$textBox.Location = New-Object System.Drawing.Point(20,50)
+$textBox.Size = New-Object System.Drawing.Size(440, 35)
+$textBox.Location = New-Object System.Drawing.Point(20, 50)
+$textBox.Font = New-Object System.Drawing.Font("Tahoma", 12, [System.Drawing.FontStyle]::Regular)
+$textBox.Multiline = $true
+$textBox.Height = 35
+$textBox.Padding = New-Object System.Windows.Forms.Padding(8)
 
 $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = ""
 $statusLabel.AutoSize = $true
-$statusLabel.Location = New-Object System.Drawing.Point(20,80)
+$statusLabel.Location = New-Object System.Drawing.Point(20, 95)
 $statusLabel.ForeColor = [System.Drawing.Color]::Blue
+$statusLabel.Font = New-Object System.Drawing.Font("Tahoma", 9, [System.Drawing.FontStyle]::Regular)
 
 $button = New-Object System.Windows.Forms.Button
 $button.Text = "شروع تست"
-$button.Size = New-Object System.Drawing.Size(120,30)
-$button.Location = New-Object System.Drawing.Point(180,110)
+$button.Size = New-Object System.Drawing.Size(140, 40)
+$button.Location = New-Object System.Drawing.Point(180, 130)
+$button.Font = New-Object System.Drawing.Font("Tahoma", 10, [System.Drawing.FontStyle]::Bold)
 
-$form.Controls.AddRange(@($label,$textBox,$statusLabel,$button))
+$form.Controls.AddRange(@($label, $textBox, $statusLabel, $button))
 
 # تابع تست TCP پورت
 function Test-TcpPort {
@@ -60,7 +68,7 @@ $button.Add_Click({
 
     $domain = $textBox.Text.Trim()
     if (!$domain) {
-        [System.Windows.Forms.MessageBox]::Show("نام دامنه خالی است","خطا")
+        [System.Windows.Forms.MessageBox]::Show("نام دامنه خالی است", "خطا", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         return
     }
 
@@ -156,12 +164,15 @@ $button.Add_Click({
     
     [System.Windows.Forms.MessageBox]::Show(
         "تمامی تست‌ها با موفقیت انجام شدند`nفایل گزارش ایجاد شده در مسیر:`n$filePath`n`nلطفا فایل گزارش را برای تیم پشتیبانی بفرستید.",
-        "تست به پایان رسید"
+        "تست به پایان رسید",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Information
     )
 
     $statusLabel.Text = ""
     $button.Enabled = $true
     $textBox.Text = ""
+    $textBox.Focus()
 })
 
 $form.ShowDialog()
