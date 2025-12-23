@@ -225,13 +225,13 @@ $button.Add_Click({
 
     Write-Log "=================================================="
     
-    # تست MX Records
+    # تست MX Records - اصلاح شده
     $statusLabel.Text = "در حال بررسی MX Records..."
     $form.Refresh()
     Write-Log "Mail Exchange (MX) Records Test:"
     try {
-        # استفاده از روش ایمن‌تر برای اجرای nslookup
-        Write-Log "MX Records for $domain :"
+        # استفاده از $() برای متغیر در رشته
+        Write-Log "MX Records for $( $domain ):"
         $mxRecords = nslookup -type=mx $domain 2>$null
         if ($mxRecords) {
             $mxRecords | ForEach-Object { Write-Log $_ }
