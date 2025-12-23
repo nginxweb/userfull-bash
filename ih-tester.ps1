@@ -2,7 +2,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "ابزار عیب‌یابی شبکه وب‌سایت"
+$form.Text = "ابزار عیب‌یابی شبکه وب‌سایت IRANHOST"
 $form.Size = New-Object System.Drawing.Size(550, 320)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
