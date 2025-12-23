@@ -3,20 +3,20 @@ Add-Type -AssemblyName System.Drawing
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "ابزار عیب‌یابی شبکه وب‌سایت"
-$form.Size = New-Object System.Drawing.Size(500, 280)
+$form.Size = New-Object System.Drawing.Size(550, 320)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 $form.Font = New-Object System.Drawing.Font("Tahoma", 10)
 
 $label = New-Object System.Windows.Forms.Label
-$label.Text = "نام دامنه وب‌سایت مشتری را وارد کنید:"
+$label.Text = "نام دامنه وب‌سایت مشتری را وارد کنید (بدون http/https/www):"
 $label.AutoSize = $true
 $label.Location = New-Object System.Drawing.Point(20, 20)
 $label.Font = New-Object System.Drawing.Font("Tahoma", 10, [System.Drawing.FontStyle]::Regular)
 
 $textBox = New-Object System.Windows.Forms.TextBox
-$textBox.Size = New-Object System.Drawing.Size(440, 35)
+$textBox.Size = New-Object System.Drawing.Size(500, 35)
 $textBox.Location = New-Object System.Drawing.Point(20, 50)
 $textBox.Font = New-Object System.Drawing.Font("Tahoma", 12, [System.Drawing.FontStyle]::Regular)
 $textBox.Multiline = $true
@@ -33,7 +33,7 @@ $statusLabel.Font = New-Object System.Drawing.Font("Tahoma", 9, [System.Drawing.
 $button = New-Object System.Windows.Forms.Button
 $button.Text = "شروع تست"
 $button.Size = New-Object System.Drawing.Size(140, 40)
-$button.Location = New-Object System.Drawing.Point(180, 130)
+$button.Location = New-Object System.Drawing.Point(200, 130)
 $button.Font = New-Object System.Drawing.Font("Tahoma", 10, [System.Drawing.FontStyle]::Bold)
 
 $form.Controls.AddRange(@($label, $textBox, $statusLabel, $button))
@@ -64,11 +64,52 @@ function Test-TcpPort {
     }
 }
 
+# تابع بررسی آدرس DNS
+function Get-DNSInfo {
+    param(
+        [string]$hostname
+    )
+    
+    try {
+        $ips = [System.Net.Dns]::GetHostAddresses($hostname) | ForEach-Object { $_.IPAddressToString }
+        return $ips -join ", "
+    } catch {
+        return "DNS resolution failed"
+    }
+}
+
 $button.Add_Click({
 
     $domain = $textBox.Text.Trim()
+    
+    # بررسی وجود دامنه
     if (!$domain) {
         [System.Windows.Forms.MessageBox]::Show("نام دامنه خالی است", "خطا", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+    
+    # بررسی عدم وجود http/https/www در دامنه
+    if ($domain -match "^(http://|https://|www\.)") {
+        [System.Windows.Forms.MessageBox]::Show(
+            "لطفاً آدرس دامنه را بدون http:// ، https:// یا www وارد کنید." + 
+            "`nمثال صحیح: example.com" + 
+            "`nمثال نادرست: https://www.example.com",
+            "فرمت دامنه نادرست",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
+        return
+    }
+    
+    # بررسی فرمت دامنه
+    if ($domain -notmatch "^[a-zA-Z0-9]+([\-\.]{1}[a-zA-Z0-9]+)*\.[a-zA-Z]{2,}$") {
+        [System.Windows.Forms.MessageBox]::Show(
+            "فرمت دامنه وارد شده صحیح نیست." + 
+            "`nلطفاً دامنه را به صورت صحیح وارد کنید، مثال: example.com",
+            "فرمت دامنه نامعتبر",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
         return
     }
 
@@ -86,6 +127,7 @@ $button.Add_Click({
 
     Write-Log "Network Diagnostic Report"
     Write-Log "Domain: $domain"
+    Write-Log "Mail Domain: mail.$domain"
     Write-Log "Start Time: $startTime"
     Write-Log "=================================================="
 
@@ -102,30 +144,58 @@ $button.Add_Click({
 
     Write-Log "=================================================="
 
-    # Ping
+    # DNS Resolution برای دامنه اصلی
+    $statusLabel.Text = "در حال بررسی DNS..."
+    $form.Refresh()
+    Write-Log "DNS Resolution:"
+    Write-Log "Main Domain ($domain) IP Addresses: $(Get-DNSInfo -hostname $domain)"
+    Write-Log "Mail Domain (mail.$domain) IP Addresses: $(Get-DNSInfo -hostname "mail.$domain")"
+
+    Write-Log "=================================================="
+
+    # Ping برای دامنه اصلی و mail
     $statusLabel.Text = "در حال انجام تست Ping..."
     $form.Refresh()
     Write-Log "Ping Test (timeout 4 seconds):"
+    Write-Log "--- Main Domain ($domain) ---"
     cmd /c "ping -n 4 -w 1000 $domain" | ForEach-Object { Write-Log $_ }
+    Write-Log ""
+    Write-Log "--- Mail Domain (mail.$domain) ---"
+    cmd /c "ping -n 4 -w 1000 mail.$domain" | ForEach-Object { Write-Log $_ }
 
     Write-Log "=================================================="
 
-    # تست پورت‌ها
+    # تست پورت‌ها برای دامنه اصلی
     $statusLabel.Text = "در حال آزمایش پورت‌ها..."
     $form.Refresh()
-    Write-Log "Port Connectivity Tests:"
+    Write-Log "Port Connectivity Tests for Main Domain ($domain):"
     Write-Log "TCP Port 80 (HTTP): $(Test-TcpPort -hostname $domain -port 80 -timeoutMs 5000)"
     Write-Log "TCP Port 443 (HTTPS): $(Test-TcpPort -hostname $domain -port 443 -timeoutMs 5000)"
-    Write-Log "TCP Port 25 (SMTP): $(Test-TcpPort -hostname $domain -port 25 -timeoutMs 5000)"
-    Write-Log "TCP Port 110 (POP3): $(Test-TcpPort -hostname $domain -port 110 -timeoutMs 5000)"
+    
+    Write-Log ""
+    Write-Log "=================================================="
+    
+    # تست پورت‌ها برای mail domain
+    Write-Log "Port Connectivity Tests for Mail Domain (mail.$domain):"
+    Write-Log "TCP Port 25 (SMTP): $(Test-TcpPort -hostname "mail.$domain" -port 25 -timeoutMs 5000)"
+    Write-Log "TCP Port 110 (POP3): $(Test-TcpPort -hostname "mail.$domain" -port 110 -timeoutMs 5000)"
+    Write-Log "TCP Port 143 (IMAP): $(Test-TcpPort -hostname "mail.$domain" -port 143 -timeoutMs 5000)"
+    Write-Log "TCP Port 587 (SMTP Submission): $(Test-TcpPort -hostname "mail.$domain" -port 587 -timeoutMs 5000)"
+    Write-Log "TCP Port 465 (SMTPS): $(Test-TcpPort -hostname "mail.$domain" -port 465 -timeoutMs 5000)"
+    Write-Log "TCP Port 993 (IMAPS): $(Test-TcpPort -hostname "mail.$domain" -port 993 -timeoutMs 5000)"
+    Write-Log "TCP Port 995 (POP3S): $(Test-TcpPort -hostname "mail.$domain" -port 995 -timeoutMs 5000)"
 
     Write-Log "=================================================="
 
-    # Traceroute
+    # Traceroute برای دامنه اصلی و mail
     $statusLabel.Text = "در حال اجرای Traceroute..."
     $form.Refresh()
     Write-Log "Traceroute (max 30 hops):"
+    Write-Log "--- Main Domain ($domain) ---"
     cmd /c "tracert -d $domain" | ForEach-Object { Write-Log $_ }
+    Write-Log ""
+    Write-Log "--- Mail Domain (mail.$domain) ---"
+    cmd /c "tracert -d mail.$domain" | ForEach-Object { Write-Log $_ }
 
     Write-Log "=================================================="
 
@@ -154,16 +224,40 @@ $button.Add_Click({
     }
 
     Write-Log "=================================================="
+    
+    # تست MX Records
+    $statusLabel.Text = "در حال بررسی MX Records..."
+    $form.Refresh()
+    Write-Log "Mail Exchange (MX) Records Test:"
+    try {
+        $mxRecords = nslookup -type=mx $domain 2>$null
+        if ($mxRecords) {
+            Write-Log "MX Records for $domain:"
+            $mxRecords | ForEach-Object { Write-Log $_ }
+        } else {
+            Write-Log "No MX records found or failed to retrieve"
+        }
+    } catch {
+        Write-Log "MX Records lookup failed"
+    }
+
+    Write-Log "=================================================="
 
     $endTime = Get-Date
     Write-Log "End Time: $endTime"
     Write-Log "Test Status: Completed"
+    Write-Log ""
+    Write-Log "Summary:"
+    Write-Log "- Main Domain Tested: $domain"
+    Write-Log "- Mail Domain Tested: mail.$domain"
+    Write-Log "- Web Ports Tested: 80, 443"
+    Write-Log "- Mail Ports Tested: 25, 110, 143, 587, 465, 993, 995"
 
     $statusLabel.Text = "تست تکمیل شد"
     $form.Refresh()
     
     [System.Windows.Forms.MessageBox]::Show(
-        "تمامی تست‌ها با موفقیت انجام شدند`nفایل گزارش ایجاد شده در مسیر:`n$filePath`n`nلطفا فایل گزارش را برای تیم پشتیبانی بفرستید.",
+        "تمامی تست‌ها با موفقیت انجام شدند`n`nفایل گزارش ایجاد شده در مسیر:`n$filePath`n`nتست‌های انجام شده:`n- دامنه اصلی: $domain`n- دامنه ایمیل: mail.$domain`n- پورت‌های وب و ایمیل`n`nلطفا فایل گزارش را برای تیم پشتیبانی بفرستید.",
         "تست به پایان رسید",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
