@@ -19,7 +19,7 @@ $textBox = New-Object System.Windows.Forms.TextBox
 $textBox.Size = New-Object System.Drawing.Size(500, 35)
 $textBox.Location = New-Object System.Drawing.Point(20, 50)
 $textBox.Font = New-Object System.Drawing.Font("Tahoma", 12, [System.Drawing.FontStyle]::Regular)
-$textBox.Multiline = $true
+$textBox.Multiline = $false
 $textBox.Height = 35
 $textBox.Padding = New-Object System.Windows.Forms.Padding(8)
 
