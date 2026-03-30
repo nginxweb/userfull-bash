@@ -16,7 +16,7 @@ CYAN='\033[1;36m'
 MAGENTA='\033[1;35m'
 NC='\033[0m' # No Color
 
-echo -e "${CYAN}===== ADVANCED SYSTEM ANALYSIS =====${NC}"
+echo -e "${CYAN}===== ADVANCED SYSTEM ANALYSIS By Eric Smith =====${NC}"
 
 HOST=$(hostname)
 
