@@ -1,6 +1,6 @@
 #!/bin/bash
 # =====================================================
-# Script Name  : Advanced System Analysis
+# Script Name  : server-insight.sh
 # Author       : Eric Smith
 # Company      : ultahost.com
 # Description  : Gathers system metrics and provides
@@ -124,6 +124,19 @@ if (( DISK_USAGE_PCT > 85 )); then
   DISK_TEXT="CRITICAL"
 fi
 
+# ---------------- CPANEL ACCOUNTS ----------------
+CPANEL_INSTALLED=0
+CPANEL_ACCOUNTS=0
+RESELLER_ACCOUNTS=0
+
+if [ -x "/usr/local/cpanel/cpanel" ]; then
+  CPANEL_INSTALLED=1
+  # تعداد اکانت‌های سی پنل
+  CPANEL_ACCOUNTS=$(whmapi1 listaccts | grep -c "user:")
+  # تعداد اکانت‌های ریسلر
+  RESELLER_ACCOUNTS=$(whmapi1 listaccts | grep -B 10 "Reseller: 1" | grep "user:" | wc -l)
+fi
+
 # ---------------- OUTPUT ----------------
 echo -e "\n${BLUE}----- CURRENT USAGE -----${NC}"
 echo -e "Host            : ${CYAN}$HOST${NC}"
@@ -159,6 +172,13 @@ fi
 
 if (( DISK_USAGE_PCT > 85 )); then
   echo -e "${RED}⚠ Disk nearing capacity${NC}"
+fi
+
+# ---------------- CPANEL OUTPUT ----------------
+if (( CPANEL_INSTALLED )); then
+  echo -e "\n${MAGENTA}----- CPANEL ACCOUNTS -----${NC}"
+  echo -e "Total cPanel Accounts   : ${YELLOW}$CPANEL_ACCOUNTS${NC}"
+  echo -e "Reseller Accounts       : ${YELLOW}$RESELLER_ACCOUNTS${NC}"
 fi
 
 echo -e "\n${CYAN}===== JSON OUTPUT =====${NC}"
