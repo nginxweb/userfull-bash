@@ -145,6 +145,31 @@ if [ -x "/usr/local/cpanel/cpanel" ]; then
   RESELLER_ACCOUNTS=$(whmapi1 listaccts | grep -B 10 "Reseller: 1" | grep "user:" | wc -l)
 fi
 
+# ---------------- REALISTIC HARDWARE ----------------
+CPU_OPTIONS=(8 12 16 24 32 48 64 96 128)
+for opt in "${CPU_OPTIONS[@]}"; do
+  if (( opt >= REC_CPU )); then REAL_REC_CPU=$opt; break; fi
+done
+for opt in "${CPU_OPTIONS[@]}"; do
+  if (( opt >= IDEAL_CPU )); then REAL_IDEAL_CPU=$opt; break; fi
+done
+
+RAM_OPTIONS=(32 64 96 128 192 256 384 512)
+for ram in "${RAM_OPTIONS[@]}"; do
+  if (( $(echo "$ram >= $REC_RAM_GB" | bc -l) )); then REAL_REC_RAM=$ram; break; fi
+done
+for ram in "${RAM_OPTIONS[@]}"; do
+  if (( $(echo "$ram >= $IDEAL_RAM_GB" | bc -l) )); then REAL_IDEAL_RAM=$ram; break; fi
+done
+
+DISK_OPTIONS=(1 2 4 6 8 12 16 24 32)
+for d in "${DISK_OPTIONS[@]}"; do
+  if (( $(echo "$d >= $REC_DISK_TB" | bc -l) )); then REAL_REC_DISK=$d; break; fi
+done
+for d in "${DISK_OPTIONS[@]}"; do
+  if (( $(echo "$d >= $IDEAL_DISK_TB" | bc -l) )); then REAL_IDEAL_DISK=$d; break; fi
+done
+
 # ---------------- OUTPUT ----------------
 echo -e "\n${BLUE}----- CURRENT USAGE -----${NC}"
 echo -e "Host            : ${CYAN}$HOST${NC}"
@@ -160,15 +185,25 @@ echo -e "\n${MAGENTA}----- CLASSIFICATION -----${NC}"
 echo -e "Workload Type   : ${YELLOW}$TYPE${NC}"
 
 echo -e "\n${MAGENTA}----- RECOMMENDATION -----${NC}"
-echo -e "${CYAN}Recommended:${NC}"
+echo -e "${CYAN}Raw Recommended:${NC}"
 echo -e "CPU Cores : $REC_CPU"
 echo -e "RAM       : ${REC_RAM_GB} GB"
 echo -e "Disk      : ${REC_DISK_TB} TB"
 
-echo -e "\n${CYAN}Ideal:${NC}"
+echo -e "\n${CYAN}Realistic Market Config:${NC}"
+echo -e "CPU Cores : $REAL_REC_CPU"
+echo -e "RAM       : ${REAL_REC_RAM} GB"
+echo -e "Disk      : ${REAL_REC_DISK} TB"
+
+echo -e "\n${CYAN}Raw Ideal:${NC}"
 echo -e "CPU Cores : $IDEAL_CPU"
 echo -e "RAM       : ${IDEAL_RAM_GB} GB"
 echo -e "Disk      : ${IDEAL_DISK_TB} TB"
+
+echo -e "\n${CYAN}Realistic Market Ideal:${NC}"
+echo -e "CPU Cores : $REAL_IDEAL_CPU"
+echo -e "RAM       : ${REAL_IDEAL_RAM} GB"
+echo -e "Disk      : ${REAL_IDEAL_DISK} TB"
 
 echo -e "\n${MAGENTA}===== EXECUTIVE SUMMARY =====${NC}"
 echo -e "Server Type     : ${YELLOW}$TYPE${NC}"
@@ -195,7 +230,7 @@ echo -e "\n${CYAN}===== JSON OUTPUT =====${NC}"
 echo "{"
 echo "  \"host\": \"$HOST\","
 echo "  \"type\": \"$TYPE\","
-echo "  \"cpu\": {\"current\": $CPU_CORES, \"recommended\": $REC_CPU, \"ideal\": $IDEAL_CPU},"
-echo "  \"ram_gb\": {\"used\": $USED_RAM_GB, \"recommended\": $REC_RAM_GB, \"ideal\": $IDEAL_RAM_GB},"
-echo "  \"disk_tb\": {\"used\": $USED_DISK_TB, \"recommended\": $REC_DISK_TB, \"ideal\": $IDEAL_DISK_TB}"
+echo "  \"cpu\": {\"current\": $CPU_CORES, \"recommended\": $REAL_REC_CPU, \"ideal\": $REAL_IDEAL_CPU},"
+echo "  \"ram_gb\": {\"used\": $USED_RAM_GB, \"recommended\": $REAL_REC_RAM, \"ideal\": $REAL_IDEAL_RAM},"
+echo "  \"disk_tb\": {\"used\": $USED_DISK_TB, \"recommended\": $REAL_REC_DISK, \"ideal\": $REAL_IDEAL_DISK}"
 echo "}"
