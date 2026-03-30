@@ -27,6 +27,13 @@ LOAD_1=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | xargs)
 CPU_IDLE=$(top -bn1 | grep "Cpu(s)" | awk '{print $8}' | cut -d. -f1)
 CPU_USAGE=$((100 - CPU_IDLE))
 
+# CPU Model
+CPU_MODEL=$(lscpu | awk -F: '/Model name/ {print $2}' | sed 's/^[ \t]*//')
+
+# Total CPU Frequency (MHz)
+TOTAL_CPU_FREQ=$(awk -F: '/cpu MHz/ {sum += $2} END {print sum}' /proc/cpuinfo)
+TOTAL_CPU_FREQ_GHZ=$(echo "scale=2; $TOTAL_CPU_FREQ / 1000" | bc)
+
 # ---------------- RAM ----------------
 read TOTAL_RAM_MB USED_RAM_MB <<< $(free -m | awk '/Mem:/ {print $2, $2-$7}')
 AVAILABLE_RAM_MB=$(free -m | awk '/Mem:/ {print $7}')
@@ -129,18 +136,21 @@ CPANEL_INSTALLED=0
 CPANEL_ACCOUNTS=0
 RESELLER_ACCOUNTS=0
 
+# Check if cPanel is installed and count accounts
 if [ -x "/usr/local/cpanel/cpanel" ]; then
   CPANEL_INSTALLED=1
-  # تعداد اکانت‌های سی پنل
+  # Count total cPanel accounts
   CPANEL_ACCOUNTS=$(whmapi1 listaccts | grep -c "user:")
-  # تعداد اکانت‌های ریسلر
+  # Count reseller accounts
   RESELLER_ACCOUNTS=$(whmapi1 listaccts | grep -B 10 "Reseller: 1" | grep "user:" | wc -l)
 fi
 
 # ---------------- OUTPUT ----------------
 echo -e "\n${BLUE}----- CURRENT USAGE -----${NC}"
 echo -e "Host            : ${CYAN}$HOST${NC}"
-echo -e "CPU             : ${CPU_CORES} cores | ${CPU_STATUS}${CPU_TEXT}${NC} | Load: $LOAD_1"
+echo -e "CPU Model       : ${CYAN}$CPU_MODEL${NC}"
+echo -e "CPU Total Freq  : ${CYAN}$TOTAL_CPU_FREQ_GHZ GHz${NC}"
+echo -e "CPU Cores       : ${CPU_CORES} cores | ${CPU_STATUS}${CPU_TEXT}${NC} | Load: $LOAD_1"
 echo -e "RAM             : ${USED_RAM_GB} / ${TOTAL_RAM_GB} GB | Available: ${AVAILABLE_RAM_GB} GB | Status: ${RAM_STATUS}${RAM_TEXT}${NC}"
 echo -e "Swap Used       : ${SWAP_USED} MB"
 echo -e "Disk            : ${USED_DISK_TB} / ${TOTAL_DISK_TB} TB (${DISK_USAGE_PCT}%) | Status: ${DISK_STATUS}${DISK_TEXT}${NC}"
