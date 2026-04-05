@@ -223,3 +223,12 @@ echo -e "  ${PURPLE}▶${NC} Check status: ${GREEN}systemctl status snmpd${NC}\n
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}\n"
 print_success "Script execution completed successfully!"
+
+# Step 10: Display Hostname and Public IP
+print_header "SERVER INFORMATION"
+
+HOSTNAME=$(hostname)
+IP=$(curl -s ifconfig.me || echo "Unavailable")
+
+echo -e "${WHITE}🖥 Hostname:${NC} ${YELLOW}$HOSTNAME${NC}"
+echo -e "${WHITE}🌐 Public IP:${NC} ${YELLOW}$IP${NC}\n"
