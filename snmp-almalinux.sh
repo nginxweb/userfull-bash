@@ -152,6 +152,10 @@ extend mailqueue /bin/bash -c "exim -bpc"
 extend inode_root /bin/bash -c "df -i / | awk 'NR==2 {print \$5}'"
 extend iowait /bin/bash -c "top -b -n 1 | awk '/Cpu/ {print \$10}'"
 extend cpusteal /bin/bash -c "top -b -n 1 | awk '/Cpu/ {print \$16}'"
+extend cpanel_accounts /bin/bash -c "ls /var/cpanel/users | wc -l"
+extend all_accounts /bin/bash -c "awk -F: '{print \$1}' /etc/userdomains | wc -l"
+extend suspended_accounts /bin/bash -c "ls /var/cpanel/suspended | wc -l"
+extend reseller_accounts /bin/bash -c "awk '{print \$2}' /etc/trueuserowners | sort -u | wc -l"
 
 # System Information
 syslocation Unknown
