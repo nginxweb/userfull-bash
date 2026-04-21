@@ -3,16 +3,24 @@
 # ======================================================================
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║     EXIM QUEUE SPAM ANALYZER - TELEGRAM ALERT SYSTEM            ║
+# ║              CRON JOB COMPATIBLE VERSION                         ║
 # ╚══════════════════════════════════════════════════════════════════╝
 # ======================================================================
+
+# Set full PATH for cron environment
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Telegram Configuration
 CHAT_ID="992809735"
 BOT_TOKEN="8770766348:AAEcXgiu12B6KSnRzgbwiRe2Ty3sRG8eExk"
 
-# Temporary files
+# Temporary files (use /tmp which is writable in cron)
 TEMP_DIR="/tmp/exim_telegram_$$"
-mkdir -p "$TEMP_DIR"
+mkdir -p "$TEMP_DIR" || {
+    echo "Failed to create temp directory"
+    exit 1
+}
+
 QUEUE_DETAIL="$TEMP_DIR/queue_detail.txt"
 SENDER_LIST="$TEMP_DIR/senders.txt"
 DOMAIN_LIST="$TEMP_DIR/domains.txt"
@@ -22,35 +30,56 @@ HOURLY_STATS="$TEMP_DIR/hourly.txt"
 CRON_USERS="$TEMP_DIR/cron_users.txt"
 HIGH_RISK="$TEMP_DIR/high_risk.txt"
 REPORT_FILE="$TEMP_DIR/report.txt"
+ERROR_LOG="$TEMP_DIR/error.log"
+
+# Redirect all errors to log file
+exec 2>>"$ERROR_LOG"
 
 # Check for root privileges
 if [ "$EUID" -ne 0 ]; then 
-    echo "Please run this script as root."
+    echo "$(date): Error - Script must be run as root" >> "$ERROR_LOG"
     exit 1
 fi
+
+# Find full paths for required commands
+EXIM_CMD=$(which exim 2>/dev/null || echo "/usr/sbin/exim")
+CURL_CMD=$(which curl 2>/dev/null || echo "/usr/bin/curl")
+GREP_CMD=$(which grep 2>/dev/null || echo "/bin/grep")
+AWK_CMD=$(which awk 2>/dev/null || echo "/usr/bin/awk")
+SED_CMD=$(which sed 2>/dev/null || echo "/bin/sed")
+SORT_CMD=$(which sort 2>/dev/null || echo "/usr/bin/sort")
+UNIQ_CMD=$(which uniq 2>/dev/null || echo "/usr/bin/uniq")
+HEAD_CMD=$(which head 2>/dev/null || echo "/usr/bin/head")
+CUT_CMD=$(which cut 2>/dev/null || echo "/usr/bin/cut")
+WC_CMD=$(which wc 2>/dev/null || echo "/usr/bin/wc")
+DATE_CMD=$(which date 2>/dev/null || echo "/bin/date")
 
 # Function to send message to Telegram
 send_telegram() {
     local message="$1"
-    echo "$message" > "$TEMP_DIR/telegram_msg.txt"
     
-    RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    # Create temporary file for message
+    MSG_FILE="$TEMP_DIR/telegram_msg.txt"
+    echo "$message" > "$MSG_FILE"
+    
+    # Send using curl with timeout
+    RESPONSE=$($CURL_CMD --max-time 30 -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
         -d "chat_id=${CHAT_ID}" \
-        --data-urlencode "text@$TEMP_DIR/telegram_msg.txt" \
-        -d "parse_mode=HTML")
+        --data-urlencode "text@$MSG_FILE" \
+        -d "parse_mode=HTML" 2>&1)
     
-    if echo "$RESPONSE" | grep -q '"ok":true'; then
-        echo "✅ Message sent to Telegram successfully"
+    if echo "$RESPONSE" | $GREP_CMD -q '"ok":true'; then
+        echo "$($DATE_CMD): Message sent to Telegram successfully" >> "$ERROR_LOG"
         return 0
     else
-        echo "❌ Failed to send message"
+        echo "$($DATE_CMD): Failed to send message. Response: $RESPONSE" >> "$ERROR_LOG"
         return 1
     fi
 }
 
 # Function to get today's date in log format
 get_today_date() {
-    date +"%Y-%m-%d"
+    $DATE_CMD +"%Y-%m-%d"
 }
 
 # Function to format large numbers
@@ -64,76 +93,96 @@ format_number() {
 }
 
 # 1. Check total emails in queue
-QUEUE_COUNT=$(exim -bpc 2>/dev/null)
+QUEUE_COUNT=$($EXIM_CMD -bpc 2>>"$ERROR_LOG")
 if [ -z "$QUEUE_COUNT" ]; then
-    echo "Error executing exim -bpc command"
+    echo "$($DATE_CMD): Error executing exim -bpc command" >> "$ERROR_LOG"
+    rm -rf "$TEMP_DIR"
     exit 1
 fi
 
-echo "📊 Total emails in queue: $QUEUE_COUNT"
+echo "$($DATE_CMD): Total emails in queue: $QUEUE_COUNT" >> "$ERROR_LOG"
 
 # Stop if queue count is below threshold
 if [ "$QUEUE_COUNT" -le 100 ]; then
-    echo "✅ Queue count is below 100. No alert needed."
+    echo "$($DATE_CMD): Queue count is below 100. No alert needed." >> "$ERROR_LOG"
     rm -rf "$TEMP_DIR"
     exit 0
 fi
 
 TODAY=$(get_today_date)
 LOG_FILE="/var/log/exim_mainlog"
-HOSTNAME=$(hostname)
-CURRENT_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+HOSTNAME=$(hostname 2>/dev/null || echo "Unknown")
+CURRENT_TIME=$($DATE_CMD "+%Y-%m-%d %H:%M:%S")
+
+# Check if log file exists
+if [ ! -f "$LOG_FILE" ]; then
+    echo "$($DATE_CMD): Error - Log file $LOG_FILE not found" >> "$ERROR_LOG"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
 
 # 2. Get today's email statistics
-echo "📈 Gathering today's email statistics..."
+echo "$($DATE_CMD): Gathering today's email statistics..." >> "$ERROR_LOG"
 
-# Overall traffic
-RECEIVED=$(grep "$TODAY" $LOG_FILE 2>/dev/null | grep "<=" | grep -v "<= <>" | grep -v "U=mailnull" | wc -l)
-SENT=$(grep "$TODAY" $LOG_FILE 2>/dev/null | grep "=>" | wc -l)
-FAILED=$(grep "$TODAY" $LOG_FILE 2>/dev/null | grep "\*\*" | wc -l)
-BOUNCES=$(grep "$TODAY" $LOG_FILE 2>/dev/null | grep "<= <>" | wc -l)
+# Overall traffic with error handling
+RECEIVED=$($GREP_CMD "$TODAY" $LOG_FILE 2>/dev/null | $GREP_CMD "<=" | $GREP_CMD -v "<= <>" | $GREP_CMD -v "U=mailnull" | $WC_CMD -l)
+SENT=$($GREP_CMD "$TODAY" $LOG_FILE 2>/dev/null | $GREP_CMD "=>" | $WC_CMD -l)
+FAILED=$($GREP_CMD "$TODAY" $LOG_FILE 2>/dev/null | $GREP_CMD "\*\*" | $WC_CMD -l)
+BOUNCES=$($GREP_CMD "$TODAY" $LOG_FILE 2>/dev/null | $GREP_CMD "<= <>" | $WC_CMD -l)
+
+# Ensure variables are numbers
+RECEIVED=${RECEIVED:-0}
+SENT=${SENT:-0}
+FAILED=${FAILED:-0}
+BOUNCES=${BOUNCES:-0}
 
 # 3. Analyze queue status
-FROZEN_COUNT=$(exim -bp 2>/dev/null | grep -c "frozen")
+FROZEN_COUNT=$($EXIM_CMD -bp 2>/dev/null | $GREP_CMD -c "frozen" || echo "0")
 ACTIVE_COUNT=$((QUEUE_COUNT - FROZEN_COUNT))
 
 # 4. Extract sender information from current queue
-QUEUE_DETAIL_DATA=$(exim -bp 2>/dev/null)
+QUEUE_DETAIL_DATA=$($EXIM_CMD -bp 2>/dev/null)
 echo "$QUEUE_DETAIL_DATA" > "$QUEUE_DETAIL"
 
 # Extract sender email addresses
-grep -oE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$QUEUE_DETAIL" | sort | uniq -c | sort -rn | head -15 > "$SENDER_LIST"
+$GREP_CMD -oE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$QUEUE_DETAIL" 2>/dev/null | \
+    $SORT_CMD | $UNIQ_CMD -c | $SORT_CMD -rn | $HEAD_CMD -15 > "$SENDER_LIST"
 
 # Extract domains
-grep -oE '@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$QUEUE_DETAIL" | sed 's/@//' | sort | uniq -c | sort -rn | head -10 > "$DOMAIN_LIST"
+$GREP_CMD -oE '@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$QUEUE_DETAIL" 2>/dev/null | \
+    $SED_CMD 's/@//' | $SORT_CMD | $UNIQ_CMD -c | $SORT_CMD -rn | $HEAD_CMD -10 > "$DOMAIN_LIST"
 
 # Extract cPanel users
-grep -oE '/home/[^/]+/' "$QUEUE_DETAIL" | cut -d'/' -f3 | sort | uniq -c | sort -rn | head -10 > "$CPANEL_LIST"
+$GREP_CMD -oE '/home/[^/]+/' "$QUEUE_DETAIL" 2>/dev/null | \
+    $CUT_CMD -d'/' -f3 | $SORT_CMD | $UNIQ_CMD -c | $SORT_CMD -rn | $HEAD_CMD -10 > "$CPANEL_LIST"
 
 # Extract CWD paths from today's logs
-grep "$TODAY" $LOG_FILE 2>/dev/null | grep "cwd=" | grep -oP 'cwd=\K[^ ]+' | sort | uniq -c | sort -rn | head -10 > "$CWD_LIST"
+$GREP_CMD "$TODAY" $LOG_FILE 2>/dev/null | $GREP_CMD "cwd=" | \
+    $GREP_CMD -oP 'cwd=\K[^ ]+' 2>/dev/null | $SORT_CMD | $UNIQ_CMD -c | $SORT_CMD -rn | $HEAD_CMD -10 > "$CWD_LIST"
 
 # 5. Get hourly statistics
-echo "⏰ Analyzing hourly patterns..."
+echo "$($DATE_CMD): Analyzing hourly patterns..." >> "$ERROR_LOG"
 for hour in {0..23}; do
     hour_padded=$(printf "%02d" $hour)
-    hour_total=$(grep "$TODAY $hour_padded:" $LOG_FILE 2>/dev/null | wc -l)
+    hour_total=$($GREP_CMD "$TODAY $hour_padded:" $LOG_FILE 2>/dev/null | $WC_CMD -l)
     echo "$hour_padded:$hour_total" >> "$HOURLY_STATS"
 done
 
 # 6. Find cron email users
-echo "🔍 Checking cron email senders..."
-grep "$TODAY" $LOG_FILE 2>/dev/null | grep "cwd=" | grep -E "/home/" | grep -oP 'cwd=/home/\K[^/]+' | sort | uniq -c | sort -rn | head -10 > "$CRON_USERS"
+echo "$($DATE_CMD): Checking cron email senders..." >> "$ERROR_LOG"
+$GREP_CMD "$TODAY" $LOG_FILE 2>/dev/null | $GREP_CMD "cwd=" | \
+    $GREP_CMD -E "/home/" | $GREP_CMD -oP 'cwd=/home/\K[^/]+' 2>/dev/null | \
+    $SORT_CMD | $UNIQ_CMD -c | $SORT_CMD -rn | $HEAD_CMD -10 > "$CRON_USERS"
 
 # 7. Analyze high-risk messages from queue
-echo "🚨 Identifying high-risk messages..."
-exim -bp 2>/dev/null | grep -E '^[0-9]+[a-zA-Z]' | head -20 | while read line; do
-    msg_id=$(echo "$line" | awk '{print $3}')
-    frozen=$(echo "$line" | grep -c "frozen")
-    size=$(echo "$line" | awk '{print $2}')
+echo "$($DATE_CMD): Identifying high-risk messages..." >> "$ERROR_LOG"
+$EXIM_CMD -bp 2>/dev/null | $GREP_CMD -E '^[0-9]+[a-zA-Z]' | $HEAD_CMD -20 | while read line; do
+    msg_id=$(echo "$line" | $AWK_CMD '{print $3}')
+    frozen=$(echo "$line" | $GREP_CMD -c "frozen")
+    size=$(echo "$line" | $AWK_CMD '{print $2}')
     
     # Check if it's a bounce message
-    if exim -Mvh "$msg_id" 2>/dev/null | grep -q "Auto-Submitted: auto-replied\|Precedence: bulk\|X-Mailer: PHP"; then
+    if $EXIM_CMD -Mvh "$msg_id" 2>/dev/null | $GREP_CMD -q "Auto-Submitted: auto-replied\|Precedence: bulk\|X-Mailer: PHP"; then
         echo "$msg_id|$size|$frozen|SPAM_SIGNATURE" >> "$HIGH_RISK"
     elif [ "$frozen" -eq 1 ]; then
         echo "$msg_id|$size|$frozen|FROZEN" >> "$HIGH_RISK"
@@ -141,19 +190,27 @@ exim -bp 2>/dev/null | grep -E '^[0-9]+[a-zA-Z]' | head -20 | while read line; d
 done
 
 # 8. Get most active sender
-MOST_ACTIVE=$(head -1 "$SENDER_LIST" 2>/dev/null | awk '{$1=""; print $0}' | sed 's/^[ \t]*//')
-MOST_ACTIVE_COUNT=$(head -1 "$SENDER_LIST" 2>/dev/null | awk '{print $1}')
+MOST_ACTIVE=$($HEAD_CMD -1 "$SENDER_LIST" 2>/dev/null | $AWK_CMD '{$1=""; print $0}' | $SED_CMD 's/^[ \t]*//')
+MOST_ACTIVE_COUNT=$($HEAD_CMD -1 "$SENDER_LIST" 2>/dev/null | $AWK_CMD '{print $1}')
+
+# Set defaults if empty
+MOST_ACTIVE=${MOST_ACTIVE:-"None"}
+MOST_ACTIVE_COUNT=${MOST_ACTIVE_COUNT:-0}
 
 # 9. Get top cPanel user
-TOP_CPANEL=$(head -1 "$CPANEL_LIST" 2>/dev/null | awk '{print $2}')
-TOP_CPANEL_COUNT=$(head -1 "$CPANEL_LIST" 2>/dev/null | awk '{print $1}')
+TOP_CPANEL=$($HEAD_CMD -1 "$CPANEL_LIST" 2>/dev/null | $AWK_CMD '{print $2}')
+TOP_CPANEL_COUNT=$($HEAD_CMD -1 "$CPANEL_LIST" 2>/dev/null | $AWK_CMD '{print $1}')
 
 # 10. Check for suspicious TLDs
-SUSPICIOUS_DOMAINS=$(grep -E '\.(xyz|top|work|date|stream|bid|trade|webcam|science|party|review|loan|win|men|download|racing|accountant|faith|bar|rest|click|link|help|gdn|ooo|cfd|sbs|icu|cyou|bond|monster)$' "$DOMAIN_LIST" | head -5)
+SUSPICIOUS_DOMAINS=$($GREP_CMD -E '\.(xyz|top|work|date|stream|bid|trade|webcam|science|party|review|loan|win|men|download|racing|accountant|faith|bar|rest|click|link|help|gdn|ooo|cfd|sbs|icu|cyou|bond|monster)$' "$DOMAIN_LIST" 2>/dev/null | $HEAD_CMD -5)
 
 # 11. Find peak hour
-PEAK_HOUR=$(sort -t: -k2 -rn "$HOURLY_STATS" | head -1 | cut -d: -f1)
-PEAK_TOTAL=$(sort -t: -k2 -rn "$HOURLY_STATS" | head -1 | cut -d: -f2)
+PEAK_HOUR=$($SORT_CMD -t: -k2 -rn "$HOURLY_STATS" 2>/dev/null | $HEAD_CMD -1 | $CUT_CMD -d: -f1)
+PEAK_TOTAL=$($SORT_CMD -t: -k2 -rn "$HOURLY_STATS" 2>/dev/null | $HEAD_CMD -1 | $CUT_CMD -d: -f2)
+
+# Set defaults
+PEAK_HOUR=${PEAK_HOUR:-"N/A"}
+PEAK_TOTAL=${PEAK_TOTAL:-0}
 
 # 12. Build comprehensive report
 {
@@ -198,7 +255,7 @@ PEAK_TOTAL=$(sort -t: -k2 -rn "$HOURLY_STATS" | head -1 | cut -d: -f2)
     echo "📧 <b>TOP SENDERS IN QUEUE</b>"
     echo "═══════════════════════════════════════════"
     echo "<pre>"
-    cat "$SENDER_LIST" 2>/dev/null | head -10
+    $HEAD_CMD -10 "$SENDER_LIST" 2>/dev/null
     echo "</pre>"
     echo ""
     
@@ -252,7 +309,7 @@ PEAK_TOTAL=$(sort -t: -k2 -rn "$HOURLY_STATS" | head -1 | cut -d: -f2)
         echo "🚨 <b>HIGH-RISK MESSAGES DETECTED</b>"
         echo "═══════════════════════════════════════════"
         echo "<pre>"
-        head -5 "$HIGH_RISK" | while IFS='|' read id size frozen reason; do
+        $HEAD_CMD -5 "$HIGH_RISK" | while IFS='|' read id size frozen reason; do
             printf "%-12s %8s %s\n" "$id" "$size" "$reason"
         done
         echo "</pre>"
@@ -288,45 +345,14 @@ PEAK_TOTAL=$(sort -t: -k2 -rn "$HOURLY_STATS" | head -1 | cut -d: -f2)
 } > "$REPORT_FILE"
 
 # 13. Send report to Telegram
-echo ""
-echo "📤 Sending comprehensive report to Telegram..."
+echo "$($DATE_CMD): Sending comprehensive report to Telegram..." >> "$ERROR_LOG"
 send_telegram "$(cat $REPORT_FILE)"
 
-# 14. Display summary on console
-echo ""
-echo "========================================="
-echo "📊 QUEUE ANALYSIS SUMMARY"
-echo "========================================="
-echo "Server:        $HOSTNAME"
-echo "Time:          $CURRENT_TIME"
-echo "Queue Total:   $QUEUE_COUNT"
-echo "Queue Frozen:  $FROZEN_COUNT"
-echo "Today Traffic: $((RECEIVED + SENT)) emails"
-echo ""
-echo "🔥 MOST ACTIVE: $MOST_ACTIVE ($MOST_ACTIVE_COUNT emails)"
-echo ""
+# 14. Cleanup (keep error log for debugging, remove after 7 days)
+find /tmp -name "exim_telegram_*" -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
 
-if [ -n "$TOP_CPANEL" ]; then
-    echo "👤 TOP CPANEL: $TOP_CPANEL ($TOP_CPANEL_COUNT emails)"
-    echo ""
-fi
+# Clean current temp dir but keep error log for debugging
+# Uncomment next line to remove all temp files
+# rm -rf "$TEMP_DIR"
 
-echo "📧 Top 5 Senders:"
-head -5 "$SENDER_LIST" 2>/dev/null
-echo ""
-
-echo "🌐 Top 5 Domains:"
-head -5 "$DOMAIN_LIST" 2>/dev/null
-echo ""
-
-if [ -s "$CRON_USERS" ]; then
-    echo "⏰ Top Cron Senders:"
-    head -3 "$CRON_USERS"
-    echo ""
-fi
-
-echo "========================================="
-echo "✅ Report sent to Telegram successfully!"
-
-# 15. Cleanup
-rm -rf "$TEMP_DIR"
+exit 0
