@@ -8,7 +8,7 @@
 
 # Telegram Configuration
 CHAT_ID="992809735"
-BOT_TOKEN="8400990771:AAF1da4odhR5ScjIIA7LrYMzH1CQnZ0nuak"
+BOT_TOKEN="8770766348:AAEcXgiu12B6KSnRzgbwiRe2Ty3sRG8eExk"
 
 # Temporary files
 TEMP_DIR="/tmp/exim_telegram_$$"
