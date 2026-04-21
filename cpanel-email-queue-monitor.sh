@@ -7,8 +7,8 @@
 # ╚══════════════════════════════════════════════════════════════════╝
 # ======================================================================
 
-# Set full PATH for cron environment
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Set full PATH for cron environment (based on your server's PATH)
+export PATH="/usr/local/cpanel/3rdparty/lib/path-bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin"
 
 # Telegram Configuration
 CHAT_ID="992809735"
@@ -41,7 +41,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Find full paths for required commands
+# Find full paths for required commands (fallback to standard paths)
 EXIM_CMD=$(which exim 2>/dev/null || echo "/usr/sbin/exim")
 CURL_CMD=$(which curl 2>/dev/null || echo "/usr/bin/curl")
 GREP_CMD=$(which grep 2>/dev/null || echo "/bin/grep")
@@ -352,7 +352,6 @@ send_telegram "$(cat $REPORT_FILE)"
 find /tmp -name "exim_telegram_*" -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
 
 # Clean current temp dir but keep error log for debugging
-# Uncomment next line to remove all temp files
 # rm -rf "$TEMP_DIR"
 
 exit 0
