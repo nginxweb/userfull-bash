@@ -4,7 +4,7 @@
 # JetBackup 5 Status Report Script - Complete Version with Telegram
 # =============================================================================
 # Description: Comprehensive backup monitoring script with HTML report and Telegram notification
-# Version: 3.2 - Enhanced error details for failed accounts
+# Version: 3.3 - Fixed grep -c multi-line output bug
 # =============================================================================
 
 # Prevent pipe failures from stopping the script
@@ -67,6 +67,25 @@ INVALID_FTP=0
 # HELPER FUNCTIONS
 # =============================================================================
 
+# Safe grep count - fixes multi-line output bug
+safe_grep_count() {
+    local pattern="$1"
+    local file="$2"
+    local result
+    
+    result=$(timeout 5 grep -c "$pattern" "$file" 2>/dev/null | head -1) || result=0
+    
+    # Clean up - take only first number
+    result=$(echo "$result" | grep -oP '^\d+' | head -1)
+    
+    # Validate
+    if [[ "$result" =~ ^[0-9]+$ ]]; then
+        echo "$result"
+    else
+        echo "0"
+    fi
+}
+
 print_header() {
     local title="$1"
     local icon="$2"
@@ -86,6 +105,9 @@ print_info() { echo -e "${BLUE}  ${ICON_INFO} $1${RESET}"; }
 
 format_duration() {
     local total_seconds=$1
+    [ -z "$total_seconds" ] && total_seconds=0
+    # Ensure integer
+    total_seconds=$(echo "$total_seconds" | grep -oP '^\d+' | head -1)
     [ -z "$total_seconds" ] && total_seconds=0
     local hours=$((total_seconds / 3600))
     local minutes=$(((total_seconds % 3600) / 60))
@@ -134,13 +156,9 @@ get_log_stats() {
         return
     fi
     
-    local completed=$(timeout 5 grep -c 'Backup Completed' "$log_file" 2>/dev/null) || completed=0
-    local partial=$(timeout 5 grep -c 'Backup Partially Completed' "$log_file" 2>/dev/null) || partial=0
-    local failed=$(timeout 5 grep -c 'Backup Failed' "$log_file" 2>/dev/null) || failed=0
-    
-    [[ "$completed" =~ ^[0-9]+$ ]] || completed=0
-    [[ "$partial" =~ ^[0-9]+$ ]] || partial=0
-    [[ "$failed" =~ ^[0-9]+$ ]] || failed=0
+    local completed=$(safe_grep_count 'Backup Completed' "$log_file")
+    local partial=$(safe_grep_count 'Backup Partially Completed' "$log_file")
+    local failed=$(safe_grep_count 'Backup Failed' "$log_file")
     
     echo "${completed}|${partial}|${failed}"
 }
@@ -634,17 +652,23 @@ fi
 
 print_info "Log File: ${UNDERLINE}${LOG_FILE}${RESET}"
 
-# Backup statistics
-TOTAL_COMPLETED=$(grep -c 'Backup Completed' "$LOG_FILE" 2>/dev/null || echo 0)
-TOTAL_PARTIAL=$(grep -c 'Backup Partially Completed' "$LOG_FILE" 2>/dev/null || echo 0)
-TOTAL_FAILED=$(grep -c 'Backup Failed' "$LOG_FILE" 2>/dev/null || echo 0)
+# Backup statistics - using safe_grep_count
+TOTAL_COMPLETED=$(safe_grep_count 'Backup Completed' "$LOG_FILE")
+TOTAL_PARTIAL=$(safe_grep_count 'Backup Partially Completed' "$LOG_FILE")
+TOTAL_FAILED=$(safe_grep_count 'Backup Failed' "$LOG_FILE")
 TOTAL_ACCOUNTS=$((TOTAL_COMPLETED + TOTAL_PARTIAL + TOTAL_FAILED))
 
 print_subheader "Backup Statistics"
 echo -e "${WHITE}  Total Accounts:   ${BOLD}${TOTAL_ACCOUNTS}${RESET}"
-echo -e "${GREEN}  Completed:        ${BOLD}${TOTAL_COMPLETED}${RESET} ($(( TOTAL_COMPLETED * 100 / (TOTAL_ACCOUNTS > 0 ? TOTAL_ACCOUNTS : 1) ))%)"
-echo -e "${YELLOW}  Partial:          ${BOLD}${TOTAL_PARTIAL}${RESET} ($(( TOTAL_PARTIAL * 100 / (TOTAL_ACCOUNTS > 0 ? TOTAL_ACCOUNTS : 1) ))%)"
-echo -e "${RED}  Failed:           ${BOLD}${TOTAL_FAILED}${RESET} ($(( TOTAL_FAILED * 100 / (TOTAL_ACCOUNTS > 0 ? TOTAL_ACCOUNTS : 1) ))%)"
+if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
+    echo -e "${GREEN}  Completed:        ${BOLD}${TOTAL_COMPLETED}${RESET} ($(( TOTAL_COMPLETED * 100 / TOTAL_ACCOUNTS ))%)"
+    echo -e "${YELLOW}  Partial:          ${BOLD}${TOTAL_PARTIAL}${RESET} ($(( TOTAL_PARTIAL * 100 / TOTAL_ACCOUNTS ))%)"
+    echo -e "${RED}  Failed:           ${BOLD}${TOTAL_FAILED}${RESET} ($(( TOTAL_FAILED * 100 / TOTAL_ACCOUNTS ))%)"
+else
+    echo -e "${GREEN}  Completed:        ${BOLD}${TOTAL_COMPLETED}${RESET}"
+    echo -e "${YELLOW}  Partial:          ${BOLD}${TOTAL_PARTIAL}${RESET}"
+    echo -e "${RED}  Failed:           ${BOLD}${TOTAL_FAILED}${RESET}"
+fi
 
 if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
     SUCCESS_RATE=$(( TOTAL_COMPLETED * 100 / TOTAL_ACCOUNTS ))
@@ -658,6 +682,8 @@ if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
     fi
     printf " %d%% " "$SUCCESS_RATE"
     echo -e "${RESET}"
+else
+    SUCCESS_RATE=0
 fi
 
 # =============================================================================
@@ -701,7 +727,8 @@ if [ -n "$FAILED_PIDS" ]; then
         done
         
         # Show WARNING lines too
-        WARNINGS_EXIST=$(timeout 3 grep "$pid" "$LOG_FILE" 2>/dev/null | grep -c '\[WARNING\]' 2>/dev/null || echo 0)
+        WARNINGS_EXIST=$(timeout 3 grep "$pid" "$LOG_FILE" 2>/dev/null | grep -c '\[WARNING\]' 2>/dev/null | head -1) || WARNINGS_EXIST=0
+        [[ "$WARNINGS_EXIST" =~ ^[0-9]+$ ]] || WARNINGS_EXIST=0
         if [ "$WARNINGS_EXIST" -gt 0 ]; then
             echo -e "     ${DIM}${UNDERLINE}Warnings:${RESET}"
             timeout 3 grep "$pid" "$LOG_FILE" 2>/dev/null | grep '\[WARNING\]' | while IFS= read -r warning_line; do
@@ -735,7 +762,6 @@ else
             
             FAILED_HTML+="<div class='error-item'><h4 style='color: #dc3545;'>❌ $(html_escape "$account")</h4><p style='color: #6c757d;'>Reason: Account not found on server</p>"
             
-            # Show related errors for not found accounts
             echo -e "     ${DIM}${UNDERLINE}Related Errors:${RESET}"
             timeout 3 grep -B 3 -A 3 "account $account not found" "$LOG_FILE" 2>/dev/null | \
                 grep -E '\[ERROR\]|\[WARNING\]' | head -5 | while IFS= read -r line; do
@@ -774,11 +800,8 @@ if [ -n "$PARTIAL_PIDS" ]; then
         
         ACCOUNT_NAME=$(timeout 3 grep "Transferring account" "$LOG_FILE" 2>/dev/null | grep "$pid" | grep -oP 'account "\K[^"]+' | head -1 || echo "Unknown")
         
-        ERROR_COUNT=0
-        WARNING_COUNT=0
-        
-        ERROR_COUNT=$(timeout 3 grep "$pid" "$LOG_FILE" 2>/dev/null | grep -c '\[ERROR\]' 2>/dev/null) || ERROR_COUNT=0
-        WARNING_COUNT=$(timeout 3 grep "$pid" "$LOG_FILE" 2>/dev/null | grep -c '\[WARNING\]' 2>/dev/null) || WARNING_COUNT=0
+        ERROR_COUNT=$(timeout 3 grep "$pid" "$LOG_FILE" 2>/dev/null | grep -c '\[ERROR\]' 2>/dev/null | head -1) || ERROR_COUNT=0
+        WARNING_COUNT=$(timeout 3 grep "$pid" "$LOG_FILE" 2>/dev/null | grep -c '\[WARNING\]' 2>/dev/null | head -1) || WARNING_COUNT=0
         
         [[ "$ERROR_COUNT" =~ ^[0-9]+$ ]] || ERROR_COUNT=0
         [[ "$WARNING_COUNT" =~ ^[0-9]+$ ]] || WARNING_COUNT=0
@@ -830,8 +853,7 @@ echo ""
 HEALTH_HTML=""
 
 # MySQL Errors
-MYSQL_ERRORS=$(timeout 10 grep -c 'Failed export\|marked as crashed\|Server has gone away' "$LOG_FILE" 2>/dev/null) || MYSQL_ERRORS=0
-[[ "$MYSQL_ERRORS" =~ ^[0-9]+$ ]] || MYSQL_ERRORS=0
+MYSQL_ERRORS=$(safe_grep_count 'Failed export\|marked as crashed\|Server has gone away' "$LOG_FILE")
 
 if [ "$MYSQL_ERRORS" -gt 0 ]; then
     print_warning "${ICON_DATABASE} MySQL Errors: ${RED}${MYSQL_ERRORS}${RESET}"
@@ -851,8 +873,7 @@ else
 fi
 
 # Expired SSL
-EXPIRED_SSL=$(timeout 10 grep -c 'already expired' "$LOG_FILE" 2>/dev/null) || EXPIRED_SSL=0
-[[ "$EXPIRED_SSL" =~ ^[0-9]+$ ]] || EXPIRED_SSL=0
+EXPIRED_SSL=$(safe_grep_count 'already expired' "$LOG_FILE")
 
 if [ "$EXPIRED_SSL" -gt 0 ]; then
     print_warning "${ICON_LOCK} Expired SSL: ${RED}${EXPIRED_SSL}${RESET}"
@@ -870,8 +891,7 @@ else
 fi
 
 # Invalid FTP
-INVALID_FTP=$(timeout 10 grep -c 'Invalid FTP account' "$LOG_FILE" 2>/dev/null) || INVALID_FTP=0
-[[ "$INVALID_FTP" =~ ^[0-9]+$ ]] || INVALID_FTP=0
+INVALID_FTP=$(safe_grep_count 'Invalid FTP account' "$LOG_FILE")
 
 if [ "$INVALID_FTP" -gt 0 ]; then
     print_warning "${ICON_FTP} Invalid FTP: ${RED}${INVALID_FTP}${RESET}"
@@ -968,10 +988,16 @@ TELEGRAM_MESSAGE="🚀 <b>JetBackup 5 Status Report</b>
 ━━━━━━━━━━━━━━━━━━━━━━
 
 📊 <b>Latest Backup Summary:</b>
-▪ Total Accounts: <b>${TOTAL_ACCOUNTS}</b>
-▪ ✅ Completed: <b>${TOTAL_COMPLETED}</b> ($(( TOTAL_COMPLETED * 100 / (TOTAL_ACCOUNTS > 0 ? TOTAL_ACCOUNTS : 1) ))%)
-▪ ⚠️ Partial: <b>${TOTAL_PARTIAL}</b> ($(( TOTAL_PARTIAL * 100 / (TOTAL_ACCOUNTS > 0 ? TOTAL_ACCOUNTS : 1) ))%)
-▪ ❌ Failed: <b>${TOTAL_FAILED}</b> ($(( TOTAL_FAILED * 100 / (TOTAL_ACCOUNTS > 0 ? TOTAL_ACCOUNTS : 1) ))%)
+▪ Total Accounts: <b>${TOTAL_ACCOUNTS}</b>"
+
+if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
+    TELEGRAM_MESSAGE+="
+▪ ✅ Completed: <b>${TOTAL_COMPLETED}</b> ($(( TOTAL_COMPLETED * 100 / TOTAL_ACCOUNTS ))%)
+▪ ⚠️ Partial: <b>${TOTAL_PARTIAL}</b> ($(( TOTAL_PARTIAL * 100 / TOTAL_ACCOUNTS ))%)
+▪ ❌ Failed: <b>${TOTAL_FAILED}</b> ($(( TOTAL_FAILED * 100 / TOTAL_ACCOUNTS ))%)"
+fi
+
+TELEGRAM_MESSAGE+="
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
