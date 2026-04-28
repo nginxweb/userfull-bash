@@ -4,7 +4,7 @@
 # JetBackup 5 Status Report Script - Complete Version with Telegram
 # =============================================================================
 # Description: Comprehensive backup monitoring script with HTML report and Telegram notification
-# Version: 3.3 - Fixed grep -c multi-line output bug
+# Version: 3.4 - Added total server accounts and backup coverage analysis
 # =============================================================================
 
 # Prevent pipe failures from stopping the script
@@ -62,6 +62,9 @@ SUCCESS_RATE=0
 MYSQL_ERRORS=0
 EXPIRED_SSL=0
 INVALID_FTP=0
+TOTAL_SERVER_ACCOUNTS=0
+MISSING_BACKUP_COUNT=0
+BACKUP_COVERAGE=0
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -395,6 +398,14 @@ write_html_report() {
             transition: width 0.3s ease;
         }
         
+        .progress-fill-warning {
+            background: linear-gradient(90deg, #ffc107 0%, #ff9800 100%);
+        }
+        
+        .progress-fill-danger {
+            background: linear-gradient(90deg, #dc3545 0%, #f44336 100%);
+        }
+        
         .footer {
             text-align: center;
             padding: 20px;
@@ -412,6 +423,10 @@ write_html_report() {
             margin: 5px 0;
             word-break: break-all;
         }
+        
+        .coverage-high { color: #28a745; }
+        .coverage-medium { color: #ffc107; }
+        .coverage-low { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -466,11 +481,39 @@ write_html_report() {
             <div class="section">
                 <div class="section-title">📊 Latest Weekly Backup Analysis</div>
                 <p style="margin-bottom: 15px;"><strong>Log File:</strong> <code>${LOG_FILE}</code></p>
-                <div class="stats-container">
-                    <div class="stat-card" style="border-top: 4px solid #007bff;">
-                        <div class="stat-label">Total Accounts</div>
-                        <div class="stat-number" style="color: #007bff;">${TOTAL_ACCOUNTS}</div>
+                
+                <!-- Server Account Overview -->
+                <div class="stats-container" style="margin-bottom: 20px;">
+                    <div class="stat-card" style="border-top: 4px solid #6f42c1;">
+                        <div class="stat-label">🖥️ Total Server Accounts</div>
+                        <div class="stat-number" style="color: #6f42c1;">${TOTAL_SERVER_ACCOUNTS}</div>
+                        <div class="stat-label">(/etc/trueuserdomains)</div>
                     </div>
+                    <div class="stat-card" style="border-top: 4px solid #007bff;">
+                        <div class="stat-label">📦 Backed Up Accounts</div>
+                        <div class="stat-number" style="color: #007bff;">${TOTAL_ACCOUNTS}</div>
+                        <div class="stat-label">(In this backup)</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 4px solid ${BACKUP_COVERAGE -ge 90 ? '#28a745' : BACKUP_COVERAGE -ge 70 ? '#ffc107' : '#dc3545'};">
+                        <div class="stat-label">📊 Coverage</div>
+                        <div class="stat-number ${BACKUP_COVERAGE -ge 90 ? 'coverage-high' : BACKUP_COVERAGE -ge 70 ? 'coverage-medium' : 'coverage-low'}">${BACKUP_COVERAGE}%</div>
+                        <div class="stat-label">(${MISSING_BACKUP_COUNT} accounts missing)</div>
+                    </div>
+                </div>
+                
+                <!-- Coverage Progress Bar -->
+                <div style="margin-top: 20px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span><strong>Backup Coverage</strong></span>
+                        <span><strong>${TOTAL_ACCOUNTS} / ${TOTAL_SERVER_ACCOUNTS} accounts</strong></span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${BACKUP_COVERAGE -lt 70 ? 'progress-fill-danger' : BACKUP_COVERAGE -lt 90 ? 'progress-fill-warning' : ''}" style="width: ${BACKUP_COVERAGE}%;">${BACKUP_COVERAGE}%</div>
+                    </div>
+                    ${MISSING_BACKUP_COUNT -gt 0 ? "<p style='color: #dc3545; margin-top: 5px;'>⚠️ ${MISSING_BACKUP_COUNT} accounts on server are NOT included in this backup!</p>" : "<p style='color: #28a745; margin-top: 5px;'>✅ All server accounts are covered in this backup</p>"}
+                </div>
+                
+                <div class="stats-container">
                     <div class="stat-card" style="border-top: 4px solid #28a745;">
                         <div class="stat-label">Completed</div>
                         <div class="stat-number" style="color: #28a745;">${TOTAL_COMPLETED}</div>
@@ -545,6 +588,17 @@ print_header "SERVER INFORMATION" "${ICON_SERVER}"
 echo -e "${WHITE}${BOLD}  Hostname:${RESET} ${GREEN}${SERVER_NAME}${RESET}"
 echo -e "${WHITE}${BOLD}  Date:${RESET}     ${GRAY}${REPORT_DATE}${RESET}"
 
+# Get total server accounts
+if [ -f /etc/trueuserdomains ]; then
+    TOTAL_SERVER_ACCOUNTS=$(wc -l < /etc/trueuserdomains 2>/dev/null | tr -d ' ')
+    [[ "$TOTAL_SERVER_ACCOUNTS" =~ ^[0-9]+$ ]] || TOTAL_SERVER_ACCOUNTS=0
+else
+    TOTAL_SERVER_ACCOUNTS=0
+fi
+
+echo -e "${WHITE}${BOLD}  Server Accounts:${RESET} ${MAGENTA}${TOTAL_SERVER_ACCOUNTS}${RESET} ${DIM}(/etc/trueuserdomains)${RESET}"
+echo ""
+
 # Fetch backup data
 print_info "Fetching backup data..."
 BACKUP_DATA=$(timeout 10 jetbackup5api -F listLogs -D "find[type]=1&sort[start_time]=-1&limit=20" -O json 2>/dev/null)
@@ -584,6 +638,20 @@ while IFS=$'\t' read -r start_time duration status accounts backup_type log_file
             echo -ne "${YELLOW}⚠ ${partial} partial${RESET}  "
             echo -e "${RED}✗ ${failed} failed${RESET}"
             
+            # Calculate coverage for this backup
+            if [ "$TOTAL_SERVER_ACCOUNTS" -gt 0 ] && [ -n "$accounts" ] && [ "$accounts" != "N/A" ]; then
+                BACKUP_TOTAL=$((completed + partial + failed))
+                if [ "$BACKUP_TOTAL" -gt 0 ]; then
+                    COVERAGE_PCT=$(( BACKUP_TOTAL * 100 / TOTAL_SERVER_ACCOUNTS ))
+                    MISSING=$(( TOTAL_SERVER_ACCOUNTS - BACKUP_TOTAL ))
+                    if [ "$MISSING" -gt 0 ]; then
+                        echo -e "  ${DIM}Coverage: ${YELLOW}${COVERAGE_PCT}%${RESET} ${DIM}(${MISSING} accounts not in backup)${RESET}"
+                    else
+                        echo -e "  ${DIM}Coverage: ${GREEN}${COVERAGE_PCT}%${RESET} ${DIM}(All accounts covered)${RESET}"
+                    fi
+                fi
+            fi
+            
             ESCAPED_TYPE=$(html_escape "$backup_type")
             DAILY_HTML_ROWS+="<tr><td>${FORMATTED_TIME}</td><td>${STATUS_HTML}</td><td>${FORMATTED_DUR}</td><td>${accounts:-N/A}</td><td style='color: #28a745; font-weight: bold;'>${completed}</td><td style='color: #ffc107; font-weight: bold;'>${partial}</td><td style='color: #dc3545; font-weight: bold;'>${failed}</td><td style='font-size: 0.9em; color: #6c757d;'>${ESCAPED_TYPE}</td></tr>"
         else
@@ -622,6 +690,20 @@ while IFS=$'\t' read -r start_time duration status accounts backup_type log_file
             echo -ne "${YELLOW}⚠ ${partial} partial${RESET}  "
             echo -e "${RED}✗ ${failed} failed${RESET}"
             
+            # Calculate coverage for this backup
+            if [ "$TOTAL_SERVER_ACCOUNTS" -gt 0 ] && [ -n "$accounts" ] && [ "$accounts" != "N/A" ]; then
+                BACKUP_TOTAL=$((completed + partial + failed))
+                if [ "$BACKUP_TOTAL" -gt 0 ]; then
+                    COVERAGE_PCT=$(( BACKUP_TOTAL * 100 / TOTAL_SERVER_ACCOUNTS ))
+                    MISSING=$(( TOTAL_SERVER_ACCOUNTS - BACKUP_TOTAL ))
+                    if [ "$MISSING" -gt 0 ]; then
+                        echo -e "  ${DIM}Coverage: ${YELLOW}${COVERAGE_PCT}%${RESET} ${DIM}(${MISSING} accounts not in backup)${RESET}"
+                    else
+                        echo -e "  ${DIM}Coverage: ${GREEN}${COVERAGE_PCT}%${RESET} ${DIM}(All accounts covered)${RESET}"
+                    fi
+                fi
+            fi
+            
             ESCAPED_TYPE=$(html_escape "$backup_type")
             WEEKLY_HTML_ROWS+="<tr><td>${FORMATTED_TIME}</td><td>${STATUS_HTML}</td><td>${FORMATTED_DUR}</td><td>${accounts:-N/A}</td><td style='color: #28a745; font-weight: bold;'>${completed}</td><td style='color: #ffc107; font-weight: bold;'>${partial}</td><td style='color: #dc3545; font-weight: bold;'>${failed}</td><td style='font-size: 0.9em; color: #6c757d;'>${ESCAPED_TYPE}</td></tr>"
         else
@@ -652,14 +734,41 @@ fi
 
 print_info "Log File: ${UNDERLINE}${LOG_FILE}${RESET}"
 
+# Server Accounts Overview
+echo ""
+echo -e "${BOLD}${MAGENTA}  🖥️  Server Accounts Overview:${RESET}"
+echo -e "  ${WHITE}Total accounts on server:${RESET} ${BOLD}${MAGENTA}${TOTAL_SERVER_ACCOUNTS}${RESET} ${DIM}(/etc/trueuserdomains)${RESET}"
+
 # Backup statistics - using safe_grep_count
 TOTAL_COMPLETED=$(safe_grep_count 'Backup Completed' "$LOG_FILE")
 TOTAL_PARTIAL=$(safe_grep_count 'Backup Partially Completed' "$LOG_FILE")
 TOTAL_FAILED=$(safe_grep_count 'Backup Failed' "$LOG_FILE")
 TOTAL_ACCOUNTS=$((TOTAL_COMPLETED + TOTAL_PARTIAL + TOTAL_FAILED))
 
+# Calculate backup coverage
+if [ "$TOTAL_SERVER_ACCOUNTS" -gt 0 ]; then
+    MISSING_BACKUP_COUNT=$(( TOTAL_SERVER_ACCOUNTS - TOTAL_ACCOUNTS ))
+    if [ "$MISSING_BACKUP_COUNT" -lt 0 ]; then
+        MISSING_BACKUP_COUNT=0
+    fi
+    BACKUP_COVERAGE=$(( TOTAL_ACCOUNTS * 100 / TOTAL_SERVER_ACCOUNTS ))
+else
+    MISSING_BACKUP_COUNT=0
+    BACKUP_COVERAGE=0
+fi
+
+echo -e "  ${WHITE}Accounts in this backup:${RESET} ${BOLD}${TOTAL_ACCOUNTS}${RESET}"
+echo -ne "  ${WHITE}Backup Coverage:${RESET} "
+if [ "$BACKUP_COVERAGE" -ge 95 ]; then
+    echo -e "${GREEN}${BOLD}${BACKUP_COVERAGE}%${RESET} ${GREEN}(All accounts covered)${RESET}"
+elif [ "$BACKUP_COVERAGE" -ge 80 ]; then
+    echo -e "${YELLOW}${BOLD}${BACKUP_COVERAGE}%${RESET} ${YELLOW}(${MISSING_BACKUP_COUNT} accounts missing from backup)${RESET}"
+else
+    echo -e "${RED}${BOLD}${BACKUP_COVERAGE}%${RESET} ${RED}(${MISSING_BACKUP_COUNT} accounts missing from backup!)${RESET}"
+fi
+
 print_subheader "Backup Statistics"
-echo -e "${WHITE}  Total Accounts:   ${BOLD}${TOTAL_ACCOUNTS}${RESET}"
+echo -e "${WHITE}  Total in backup:   ${BOLD}${TOTAL_ACCOUNTS}${RESET}"
 if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
     echo -e "${GREEN}  Completed:        ${BOLD}${TOTAL_COMPLETED}${RESET} ($(( TOTAL_COMPLETED * 100 / TOTAL_ACCOUNTS ))%)"
     echo -e "${YELLOW}  Partial:          ${BOLD}${TOTAL_PARTIAL}${RESET} ($(( TOTAL_PARTIAL * 100 / TOTAL_ACCOUNTS ))%)"
@@ -970,6 +1079,7 @@ print_header "QUICK COMMANDS" "${ICON_INFO}"
 echo -e "${GRAY}  View full log:         ${WHITE}less ${LOG_FILE}${RESET}"
 echo -e "${GRAY}  Search all errors:     ${WHITE}grep -E '\[ERROR\]|Backup Failed' ${LOG_FILE} | less${RESET}"
 echo -e "${GRAY}  Service status:        ${WHITE}systemctl status jetbackup5d${RESET}"
+echo -e "${GRAY}  Total server accounts: ${WHITE}wc -l /etc/trueuserdomains${RESET}"
 echo -e "${GRAY}  HTML Report:           ${WHITE}${HTML_REPORT}${RESET}"
 
 echo -e "\n${BG_BLUE}${WHITE}${BOLD} Report Generated: $(date "+%Y-%m-%d %H:%M:%S") ${RESET}\n"
@@ -987,8 +1097,21 @@ TELEGRAM_MESSAGE="🚀 <b>JetBackup 5 Status Report</b>
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-📊 <b>Latest Backup Summary:</b>
-▪ Total Accounts: <b>${TOTAL_ACCOUNTS}</b>"
+👥 <b>Server Accounts Overview:</b>
+▪ Total on server: <b>${TOTAL_SERVER_ACCOUNTS}</b>
+▪ In this backup: <b>${TOTAL_ACCOUNTS}</b>
+▪ Coverage: <b>${BACKUP_COVERAGE}%</b>"
+
+if [ "$MISSING_BACKUP_COUNT" -gt 0 ]; then
+    TELEGRAM_MESSAGE+="
+⚠️ <b>${MISSING_BACKUP_COUNT} accounts NOT in this backup!</b>"
+fi
+
+TELEGRAM_MESSAGE+="
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📊 <b>Backup Status:</b>"
 
 if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
     TELEGRAM_MESSAGE+="
