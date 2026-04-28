@@ -4,7 +4,7 @@
 # JetBackup 5 Status Report Script - Complete Version with Telegram
 # =============================================================================
 # Description: Comprehensive backup monitoring script with HTML report and Telegram notification
-# Version: 3.3 - Fixed grep -c multi-line output bug
+# Version: 3.4 - Added total server accounts comparison
 # =============================================================================
 
 # Prevent pipe failures from stopping the script
@@ -62,6 +62,8 @@ SUCCESS_RATE=0
 MYSQL_ERRORS=0
 EXPIRED_SSL=0
 INVALID_FTP=0
+TOTAL_SERVER_ACCOUNTS=0
+MISSING_ACCOUNTS=0
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -467,10 +469,20 @@ write_html_report() {
                 <div class="section-title">📊 Latest Weekly Backup Analysis</div>
                 <p style="margin-bottom: 15px;"><strong>Log File:</strong> <code>${LOG_FILE}</code></p>
                 <div class="stats-container">
+                    <div class="stat-card" style="border-top: 4px solid #6f42c1;">
+                        <div class="stat-label">Total Server Accounts</div>
+                        <div class="stat-number" style="color: #6f42c1;">${TOTAL_SERVER_ACCOUNTS}</div>
+                    </div>
                     <div class="stat-card" style="border-top: 4px solid #007bff;">
-                        <div class="stat-label">Total Accounts</div>
+                        <div class="stat-label">Total Backed Up</div>
                         <div class="stat-number" style="color: #007bff;">${TOTAL_ACCOUNTS}</div>
                     </div>
+                    <div class="stat-card" style="border-top: 4px solid #dc3545;">
+                        <div class="stat-label">Missing from Backup</div>
+                        <div class="stat-number" style="color: #dc3545;">${MISSING_ACCOUNTS}</div>
+                    </div>
+                </div>
+                <div class="stats-container" style="margin-top: 15px;">
                     <div class="stat-card" style="border-top: 4px solid #28a745;">
                         <div class="stat-label">Completed</div>
                         <div class="stat-number" style="color: #28a745;">${TOTAL_COMPLETED}</div>
@@ -544,6 +556,10 @@ EOF
 print_header "SERVER INFORMATION" "${ICON_SERVER}"
 echo -e "${WHITE}${BOLD}  Hostname:${RESET} ${GREEN}${SERVER_NAME}${RESET}"
 echo -e "${WHITE}${BOLD}  Date:${RESET}     ${GRAY}${REPORT_DATE}${RESET}"
+
+# Get total server accounts
+TOTAL_SERVER_ACCOUNTS=$(wc -l < /etc/trueuserdomains 2>/dev/null || echo "0")
+echo -e "${WHITE}${BOLD}  Total Server Accounts:${RESET} ${MAGENTA}${TOTAL_SERVER_ACCOUNTS}${RESET}"
 
 # Fetch backup data
 print_info "Fetching backup data..."
@@ -658,16 +674,29 @@ TOTAL_PARTIAL=$(safe_grep_count 'Backup Partially Completed' "$LOG_FILE")
 TOTAL_FAILED=$(safe_grep_count 'Backup Failed' "$LOG_FILE")
 TOTAL_ACCOUNTS=$((TOTAL_COMPLETED + TOTAL_PARTIAL + TOTAL_FAILED))
 
+# Calculate missing accounts
+MISSING_ACCOUNTS=$((TOTAL_SERVER_ACCOUNTS - TOTAL_ACCOUNTS))
+if [ "$MISSING_ACCOUNTS" -lt 0 ]; then
+    MISSING_ACCOUNTS=0
+fi
+
 print_subheader "Backup Statistics"
-echo -e "${WHITE}  Total Accounts:   ${BOLD}${TOTAL_ACCOUNTS}${RESET}"
-if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
-    echo -e "${GREEN}  Completed:        ${BOLD}${TOTAL_COMPLETED}${RESET} ($(( TOTAL_COMPLETED * 100 / TOTAL_ACCOUNTS ))%)"
-    echo -e "${YELLOW}  Partial:          ${BOLD}${TOTAL_PARTIAL}${RESET} ($(( TOTAL_PARTIAL * 100 / TOTAL_ACCOUNTS ))%)"
-    echo -e "${RED}  Failed:           ${BOLD}${TOTAL_FAILED}${RESET} ($(( TOTAL_FAILED * 100 / TOTAL_ACCOUNTS ))%)"
+echo -e "${MAGENTA}${BOLD}  Total Server Accounts:${RESET} ${BOLD}${TOTAL_SERVER_ACCOUNTS}${RESET}"
+echo -e "${WHITE}  Total Backed Up:      ${BOLD}${TOTAL_ACCOUNTS}${RESET}"
+if [ "$MISSING_ACCOUNTS" -gt 0 ]; then
+    echo -e "${RED}  Missing from Backup:  ${BOLD}${MISSING_ACCOUNTS}${RESET} ${RED}(Not included in this backup)${RESET}"
 else
-    echo -e "${GREEN}  Completed:        ${BOLD}${TOTAL_COMPLETED}${RESET}"
-    echo -e "${YELLOW}  Partial:          ${BOLD}${TOTAL_PARTIAL}${RESET}"
-    echo -e "${RED}  Failed:           ${BOLD}${TOTAL_FAILED}${RESET}"
+    echo -e "${GREEN}  Missing from Backup:  ${BOLD}0${RESET} ${GREEN}(All accounts backed up)${RESET}"
+fi
+
+if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
+    echo -e "${GREEN}  Completed:            ${BOLD}${TOTAL_COMPLETED}${RESET} ($(( TOTAL_COMPLETED * 100 / TOTAL_ACCOUNTS ))%)"
+    echo -e "${YELLOW}  Partial:              ${BOLD}${TOTAL_PARTIAL}${RESET} ($(( TOTAL_PARTIAL * 100 / TOTAL_ACCOUNTS ))%)"
+    echo -e "${RED}  Failed:               ${BOLD}${TOTAL_FAILED}${RESET} ($(( TOTAL_FAILED * 100 / TOTAL_ACCOUNTS ))%)"
+else
+    echo -e "${GREEN}  Completed:            ${BOLD}${TOTAL_COMPLETED}${RESET}"
+    echo -e "${YELLOW}  Partial:              ${BOLD}${TOTAL_PARTIAL}${RESET}"
+    echo -e "${RED}  Failed:               ${BOLD}${TOTAL_FAILED}${RESET}"
 fi
 
 if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
@@ -987,8 +1016,18 @@ TELEGRAM_MESSAGE="🚀 <b>JetBackup 5 Status Report</b>
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
+👥 <b>Total Server Accounts:</b> ${TOTAL_SERVER_ACCOUNTS}
+
 📊 <b>Latest Backup Summary:</b>
-▪ Total Accounts: <b>${TOTAL_ACCOUNTS}</b>"
+▪ Total Backed Up: <b>${TOTAL_ACCOUNTS}</b>"
+
+if [ "$MISSING_ACCOUNTS" -gt 0 ]; then
+    TELEGRAM_MESSAGE+="
+▪ ❌ Missing from Backup: <b>${MISSING_ACCOUNTS}</b>"
+else
+    TELEGRAM_MESSAGE+="
+▪ ✅ All accounts backed up"
+fi
 
 if [ "$TOTAL_ACCOUNTS" -gt 0 ]; then
     TELEGRAM_MESSAGE+="
