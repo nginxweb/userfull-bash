@@ -45,8 +45,8 @@ for session_file in "$SESSIONS_DIR"/raw/*; do
         # High confidence if origin is badpass (session was pre-auth)
         if grep -q '^origin_as_string=.*method=badpass' "$session_file"; then
                 if [ -z "$external_auth" ] && [ -z "$used" ]; then
-                        echo "Found injected session file: $session_file"
-                        echo "No sign of usage"
+                        echo "Found possible injected session file: $session_file"
+                        echo "  - No sign of usage"
                 else
                     echo "[!] CRITICAL: Exploitation artifact - token_denied with injected cp_security_token: $session_file"
                     echo "    - cp_security_token=$token_val"
