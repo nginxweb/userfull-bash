@@ -85,7 +85,7 @@ for session_file in "$SESSIONS_DIR"/raw/*; do
     fi
 
     # IOC 3: Password field containing newlines (corrupted session file)
-    if grep -qP '^pass=.*\n.' "$session_file" 2>/dev/null; then
+    if grep -qzP '(?m)^pass=.*\n.' "$session_file" 2>/dev/null; then
         echo "[!] CRITICAL: Multi-line pass value detected: $session_file"
         COMPROMISED=1
     fi
