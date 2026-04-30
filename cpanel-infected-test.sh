@@ -39,7 +39,7 @@ for session_file in "$SESSIONS_DIR"/raw/*; do
         token_val=$(grep '^cp_security_token=' "$session_file" | head -1 | cut -d= -f2)
         denied_val=$(grep '^token_denied=' "$session_file" | head -1 | cut -d= -f2)
         origin=$(grep '^origin_as_string=' "$session_file" | head -1 | cut -d= -f2-)
-        used=$(grep -a "$token_val" /usr/local/cpanel/logs/access_log | grep " 200 ")
+        used=$(grep -a "$token_val" /usr/local/cpanel/logs/access_log | grep -m1 " 200 ")
         external_auth=$(grep '^successful_external_auth_with_timestamp=' "$session_file")
 
         # High confidence if origin is badpass (session was pre-auth)
