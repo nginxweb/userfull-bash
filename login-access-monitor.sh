@@ -10,7 +10,17 @@ echo "------------------------------------------------"
 echo "   Ultahost Root Monitor Installer for cPanel   "
 echo "------------------------------------------------"
 
-# 1. Create the Monitoring Script
+# 1. Check for existing installation
+echo "[+] Checking for existing installation..."
+
+if [ -f "$INSTALL_PATH" ] || [ -f "$SERVICE_PATH" ]; then
+    echo "⚠️  ALREADY INSTALLED: The monitoring service is already present on this server."
+    echo "    - To reinstall, first run: systemctl stop root-monitor && rm $INSTALL_PATH"
+    echo "    - Script aborted to prevent conflicts."
+    exit 1
+fi
+
+# 2. Create the Monitoring Script
 echo "[+] Creating monitoring script at $INSTALL_PATH..."
 
 cat << 'EOF' > $INSTALL_PATH
@@ -85,11 +95,10 @@ done &
 wait
 EOF
 
-# 2. Set Permissions
+# 3. Set Permissions
 chmod +x $INSTALL_PATH
-echo "[+] Script permissions set."
 
-# 3. Create Systemd Service
+# 4. Create Systemd Service
 echo "[+] Creating systemd service..."
 
 cat << EOF > $SERVICE_PATH
@@ -107,26 +116,23 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# 4. Enable and Start Service
+# 5. Enable and Start Service
 echo "[+] Starting and enabling service..."
 systemctl daemon-reload
 systemctl enable root-monitor.service
 systemctl restart root-monitor.service
 
-# 5. Final Check
+# 6. Final Check and Test Message
 if systemctl is-active --quiet root-monitor.service; then
     echo "------------------------------------------------"
     echo "✅ INSTALLATION SUCCESSFUL!"
-    echo "The service is now running and monitoring root logins."
-    echo "Try logging in via SSH in a new window to test."
     echo "------------------------------------------------"
     
-    # Optional: Send a test message to Telegram
     HOSTNAME=$(hostname)
     curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
         -d chat_id="$CHAT_ID" \
-        -d text="✅ <b>Monitoring Service Installed</b>%0A🖥 <b>Server:</b> <code>$HOSTNAME</code>%0A💡 <i>The monitoring service is now active on this server.</i>" \
+        -d text="✅ <b>New Deployment</b>%0A🖥 <b>Server:</b> <code>$HOSTNAME</code>%0A💡 <i>Monitoring is now active.</i>" \
         -d parse_mode="HTML" > /dev/null
 else
-    echo "❌ INSTALLATION FAILED! Please check service status using: systemctl status root-monitor"
+    echo "❌ ERROR: Service failed to start."
 fi
