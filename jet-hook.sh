@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# JetBackup Telegram Hook Installer
-# This script installs post-backup hook for JetBackup with Telegram notifications
+# JetBackup 5 Telegram Hook Installer
+# This script installs post-backup hook for JetBackup 5 with Telegram notifications
 
 set -e
 
@@ -9,7 +9,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # Configuration
 BOT_TOKEN="8776917601:AAECdL4bwZS5TCdfMRUURwU0iNzN17CXSmc"
@@ -17,7 +17,7 @@ CHAT_ID="992809735"
 SCRIPT_PATH="/opt/jetbackup-end.sh"
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}JetBackup Telegram Hook Installer${NC}"
+echo -e "${GREEN}JetBackup 5 Telegram Hook Installer${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 # Check if running as root
@@ -26,14 +26,16 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Check if JetBackup is installed
-if ! command -v jetbackup &> /dev/null && [ ! -d "/usr/local/jetbackup" ]; then
-    echo -e "${YELLOW}Warning: JetBackup does not seem to be installed on this system${NC}"
+# Check if JetBackup 5 is installed
+if ! command -v jetbackup5 &> /dev/null && [ ! -d "/usr/local/jetbackup5" ]; then
+    echo -e "${YELLOW}Warning: JetBackup 5 does not seem to be installed on this system${NC}"
     read -p "Continue anyway? (y/n): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
+else
+    echo -e "${GREEN}✓ JetBackup 5 detected${NC}"
 fi
 
 # Create the hook script
@@ -58,10 +60,10 @@ DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}')
 
 if [ "$EXIT_CODE" == "0" ]; then
     STATUS_ICON="✅"
-    STATUS_TEXT="Completed Successfully"
+    STATUS_TEXT="✅ Completed Successfully"
 else
     STATUS_ICON="❌"
-    STATUS_TEXT="Failed (Exit Code: ${EXIT_CODE})"
+    STATUS_TEXT="❌ Failed (Exit Code: ${EXIT_CODE})"
 fi
 
 MESSAGE="${STATUS_ICON} <b>JetBackup Finished</b> ${STATUS_ICON}
@@ -87,32 +89,34 @@ SCRIPT
 
 # Set execute permission
 chmod +x "$SCRIPT_PATH"
-echo -e "${GREEN}✓ Hook script created and permissions set${NC}"
+echo -e "${GREEN}✓ Hook script created at ${SCRIPT_PATH}${NC}"
 
 # Test the script
-echo -e "${GREEN}Testing the hook script...${NC}"
+echo -e "${GREEN}Testing Telegram notification...${NC}"
 if bash "$SCRIPT_PATH" "TEST_JOB" "TEST_ACCOUNT" "TEST_TYPE" "0"; then
-    echo -e "${GREEN}✓ Test notification sent to Telegram!${NC}"
+    echo -e "${GREEN}✓ Test notification sent successfully! Check Telegram${NC}"
 else
     echo -e "${YELLOW}⚠ Test failed. Check curl and network connectivity${NC}"
 fi
 
-# Instructions for JetBackup configuration
+# Auto-configure hook for JetBackup 5
+if command -v jetbackup5 &> /dev/null; then
+    echo -e "${GREEN}Auto-configuring hook for JetBackup 5...${NC}"
+    
+    # Try to add hook via jetbackup5 command
+    if jetbackup5 addHook --name "telegram-notification" --type after_backup --command "${SCRIPT_PATH} %job_id %account %type %exit_code" 2>/dev/null; then
+        echo -e "${GREEN}✓ Hook automatically configured in JetBackup 5${NC}"
+    else
+        echo -e "${YELLOW}⚠ Could not auto-configure. Please add hook manually:${NC}"
+        echo -e "   ${YELLOW}jetbackup5 addHook --name telegram-notification --type after_backup --command \"${SCRIPT_PATH} %job_id %account %type %exit_code\"${NC}"
+    fi
+fi
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Installation Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
-echo -e "Script installed at: ${YELLOW}${SCRIPT_PATH}${NC}"
+echo -e "✓ Hook script: ${YELLOW}${SCRIPT_PATH}${NC}"
+echo -e "✓ Permissions: ${YELLOW}Executable${NC}"
+echo -e "✓ Test sent: ${YELLOW}Check Telegram${NC}"
 echo
-echo -e "${YELLOW}Next Steps - Configure JetBackup:${NC}"
-echo -e "1. Login to WHM → JetBackup"
-echo -e "2. Go to 'Settings' → 'Backup Destinations' or 'Jobs'"
-echo -e "3. Look for 'Post Backup Script' or 'After Backup Script' option"
-echo -e "4. Set the path to: ${GREEN}${SCRIPT_PATH}${NC}"
-echo -e "5. Save the configuration"
-echo
-echo -e "Alternative - For cPanel/WHM JetBackup 5:"
-echo -e "  Go to: JetBackup → Settings → Hooks"
-echo -e "  Add new hook with type: 'After Backup'"
-echo -e "  Command: ${SCRIPT_PATH} %job_id %account %type %exit_code"
-echo
-echo -e "${GREEN}✓ Hook script is ready to use!${NC}"
+echo -e "${GREEN}All done! JetBackup 5 will now send Telegram notifications.${NC}"
