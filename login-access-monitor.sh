@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # --- Configuration ---
-TOKEN="8770766348:AAEcXgiu12B6KSnRzgbwiRe2Ty3sRG8eExk"
-CHAT_ID="992809735"
+TOKEN=""
+CHAT_ID=""
 INSTALL_PATH="/opt/root_monitor.sh"
 SERVICE_PATH="/etc/systemd/system/root-monitor.service"
 
