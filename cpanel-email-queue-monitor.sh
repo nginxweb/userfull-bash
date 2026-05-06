@@ -11,8 +11,8 @@
 export PATH="/usr/local/cpanel/3rdparty/lib/path-bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin"
 
 # Telegram Configuration
-CHAT_ID="992809735"
-BOT_TOKEN="8770766348:AAEcXgiu12B6KSnRzgbwiRe2Ty3sRG8eExk"
+CHAT_ID=""
+BOT_TOKEN=""
 
 # Temporary files (use /tmp which is writable in cron)
 TEMP_DIR="/tmp/exim_telegram_$$"
