@@ -13,8 +13,8 @@ set +o pipefail
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-TELEGRAM_BOT_TOKEN="8770766348:AAEcXgiu12B6KSnRzgbwiRe2Ty3sRG8eExk"
-TELEGRAM_CHAT_ID="992809735"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
 HTML_REPORT="/tmp/jetbackup_report_$(date +%Y%m%d_%H%M%S).html"
 SERVER_NAME=$(hostname -f)
 REPORT_DATE=$(date "+%Y-%m-%d %H:%M:%S %Z")
