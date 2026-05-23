@@ -126,7 +126,7 @@ fi
 echo -e "\nCurrent Total Storage: ${CYAN}${TOTAL_DISK_TB_RAW} TB${NC}"
 echo -e "Current Used Space   : ${CYAN}${USED_DISK_TB} TB (${DISK_USAGE_PCT}%)${NC}"
 
-# DISK Logic - FIXED: Never recommend less than current
+# DISK Logic - Calculate recommended disk
 if (( DISK_USAGE_PCT >= 70 )); then
     REC_DISK_TB=$(echo "$TOTAL_DISK_TB_RAW * 1.5" | bc)
     echo -e "Status: ${YELLOW}Disk usage ${DISK_USAGE_PCT}% >= 70%${NC}"
@@ -137,19 +137,22 @@ else
     echo -e "Action: ${GREEN}Keep same disk space${NC}"
 fi
 
-# FIXED: Ensure recommendation is never less than current
+# FIXED: Ensure REC_DISK_TB is never less than TOTAL_DISK_TB_RAW
 if (( $(echo "$REC_DISK_TB < $TOTAL_DISK_TB_RAW" | bc -l) )); then
     REC_DISK_TB=$TOTAL_DISK_TB_RAW
 fi
 
-# Round up (but never below current)
-REC_DISK_TB_CEIL=$(echo "$REC_DISK_TB" | awk '{print int($1+0.5)}')
-if (( $(echo "$REC_DISK_TB_CEIL < $TOTAL_DISK_TB_RAW" | bc -l) )); then
-    REC_DISK_TB_CEIL=$(echo "$TOTAL_DISK_TB_RAW" | awk '{print int($1+0.5)}')
+# FIXED: Round up to next whole number (not nearest)
+# For 1.26 -> 2, for 2.24 -> 3, for 3.8 -> 4, for 4.1 -> 5
+REC_DISK_TB_CEIL=$(echo "$REC_DISK_TB" | awk '{print int($1)+1}')
+# But if it's already a whole number, don't add 1
+if (( $(echo "$REC_DISK_TB == $REC_DISK_TB_CEIL - 1" | bc -l) )); then
+    REC_DISK_TB_CEIL=$((REC_DISK_TB_CEIL - 1))
 fi
 REC_DISK_TB=$REC_DISK_TB_CEIL
 
-if (( $(echo "$REC_DISK_TB < 1" | bc -l) )); then
+# Final safety: ensure at least 1 TB
+if (( REC_DISK_TB < 1 )); then
     REC_DISK_TB=1
 fi
 
@@ -174,21 +177,14 @@ for ram in "${RAM_OPTIONS[@]}"; do
     fi
 done
 
-# FIXED: Use proper bc comparison for disk options
 DISK_OPTIONS=(1 2 3 4 6 8 10 12 16 20 24 32 40 48 64 80 100)
 REAL_REC_DISK=$REC_DISK_TB
 for d in "${DISK_OPTIONS[@]}"; do 
-    if (( $(echo "$d >= $REC_DISK_TB" | bc -l) )); then 
+    if (( d >= REC_DISK_TB )); then 
         REAL_REC_DISK=$d
         break
     fi
 done
-
-# FIXED: Final safety check - never less than current
-CURRENT_DISK_INT=$(echo "$TOTAL_DISK_TB_RAW" | awk '{print int($1+0.5)}')
-if (( REAL_REC_DISK < CURRENT_DISK_INT )); then
-    REAL_REC_DISK=$CURRENT_DISK_INT
-fi
 
 # ---------------- FINAL OUTPUT ----------------
 echo -e "\n${MAGENTA}===== FINAL RECOMMENDATION =====${NC}"
