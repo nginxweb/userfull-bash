@@ -15,9 +15,14 @@ CYAN='\033[1;36m'
 MAGENTA='\033[1;35m'
 NC='\033[0m'
 
-echo -e "${CYAN}===== SYSTEM ANALYSIS =====${NC}"
-
+# ---------------- SERVER INFO ----------------
 HOST=$(hostname)
+CURRENT_DATE=$(date "+%Y-%m-%d %H:%M:%S")
+CURRENT_DATE_SHORT=$(date "+%Y/%m/%d")
+
+echo -e "${CYAN}===== SYSTEM ANALYSIS =====${NC}"
+echo -e "${CYAN}Server: ${HOST}${NC}"
+echo -e "${CYAN}Date  : ${CURRENT_DATE}${NC}"
 
 # ---------------- CPU ----------------
 CPU_CORES=$(nproc)
@@ -33,17 +38,14 @@ echo -e "Load Percentage   : ${CYAN}${LOAD_PERCENT}% of cores${NC}"
 
 # CPU Logic: Check load percentage against cores
 if (( LOAD_PERCENT >= 90 )); then
-    # Load is 90% or more of cores -> add 50% more cores
     REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
     echo -e "Status: ${RED}Load ${LOAD_PERCENT}% >= 90% of cores${NC}"
     echo -e "Action: ${YELLOW}Add 50% more cores${NC}"
 elif (( LOAD_PERCENT >= 70 )); then
-    # Load is 70% or more of cores -> add 50% more cores
     REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
     echo -e "Status: ${YELLOW}Load ${LOAD_PERCENT}% >= 70% of cores${NC}"
     echo -e "Action: ${YELLOW}Add 50% more cores${NC}"
 else
-    # Load is less than 70% of cores -> keep same
     REC_CPU=$CPU_CORES
     echo -e "Status: ${GREEN}Load ${LOAD_PERCENT}% < 70% of cores${NC}"
     echo -e "Action: ${GREEN}Keep same cores${NC}"
@@ -63,12 +65,10 @@ echo -e "Current Used RAM  : ${CYAN}${USED_RAM_GB} GB (${RAM_USAGE_PCT}%)${NC}"
 
 # RAM Logic: Check if used RAM is 70% or more of total
 if (( RAM_USAGE_PCT >= 70 )); then
-    # Used RAM is 70% or more -> add 50%
     REC_RAM=$(echo "$TOTAL_RAM_GB * 1.5" | bc | awk '{print int($1)+1}')
     echo -e "Status: ${YELLOW}RAM usage ${RAM_USAGE_PCT}% >= 70%${NC}"
     echo -e "Action: ${YELLOW}Add 50% more RAM${NC}"
 else
-    # Used RAM is less than 70% -> keep same
     REC_RAM=$(echo "$TOTAL_RAM_GB" | bc | awk '{print int($1)}')
     echo -e "Status: ${GREEN}RAM usage ${RAM_USAGE_PCT}% < 70%${NC}"
     echo -e "Action: ${GREEN}Keep same RAM${NC}"
@@ -89,13 +89,11 @@ echo -e "Current Used Disk : ${CYAN}${USED_DISK_TB} TB (${DISK_USAGE_PCT}%)${NC}
 
 # DISK Logic: Check if used disk is 70% or more of total
 if (( DISK_USAGE_PCT >= 70 )); then
-    # Used disk is 70% or more -> add 50% more space
     REC_DISK_GB=$(echo "$TOTAL_DISK_GB * 1.5" | bc)
     REC_DISK_TB=$(echo "scale=2; $REC_DISK_GB / 1024" | bc)
     echo -e "Status: ${YELLOW}Disk usage ${DISK_USAGE_PCT}% >= 70%${NC}"
     echo -e "Action: ${YELLOW}Add 50% more disk space${NC}"
 else
-    # Used disk is less than 70% -> keep same
     REC_DISK_TB=$TOTAL_DISK_TB
     echo -e "Status: ${GREEN}Disk usage ${DISK_USAGE_PCT}% < 70%${NC}"
     echo -e "Action: ${GREEN}Keep same disk space${NC}"
@@ -104,7 +102,6 @@ fi
 echo -e "Recommended Disk  : ${CYAN}${REC_DISK_TB} TB${NC}"
 
 # ---------------- REALISTIC MARKET VALUES ----------------
-# Round up to realistic market options
 CPU_OPTIONS=(4 6 8 12 16 20 24 32 40 48 64 80 96 128)
 REAL_REC_CPU=$REC_CPU
 for opt in "${CPU_OPTIONS[@]}"; do 
@@ -134,6 +131,7 @@ done
 
 # ---------------- FINAL OUTPUT ----------------
 echo -e "\n${MAGENTA}===== FINAL RECOMMENDATION =====${NC}"
+echo -e "${CYAN}Server: ${HOST} | Date: ${CURRENT_DATE_SHORT}${NC}"
 echo -e "${CYAN}Recommended Hardware:${NC}"
 echo -e "  CPU : ${REAL_REC_CPU} cores"
 echo -e "  RAM : ${REAL_REC_RAM} GB"
