@@ -23,28 +23,29 @@ HOST=$(hostname)
 CPU_CORES=$(nproc)
 LOAD_1=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | xargs)
 
-# Convert load to integer for comparison
-LOAD_INT=$(printf "%.0f" "$LOAD_1")
+# Calculate load percentage relative to cores
+LOAD_PERCENT=$(echo "scale=0; ($LOAD_1 / $CPU_CORES) * 100" | bc)
 
 echo -e "\n${BLUE}----- CPU ANALYSIS -----${NC}"
 echo -e "Current CPU Cores : ${CYAN}$CPU_CORES${NC}"
 echo -e "Current Load      : ${CYAN}$LOAD_1${NC}"
+echo -e "Load Percentage   : ${CYAN}${LOAD_PERCENT}% of cores${NC}"
 
-# CPU Logic: Compare load vs cores
-if (( LOAD_INT >= CPU_CORES )); then
-    # Load is equal to or higher than cores -> add 50%
+# CPU Logic: Check load percentage against cores
+if (( LOAD_PERCENT >= 90 )); then
+    # Load is 90% or more of cores -> add 50% more cores
     REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
-    echo -e "Status: ${YELLOW}Load >= Cores (${LOAD_INT} >= ${CPU_CORES})${NC}"
+    echo -e "Status: ${RED}Load ${LOAD_PERCENT}% >= 90% of cores${NC}"
     echo -e "Action: ${YELLOW}Add 50% more cores${NC}"
-elif (( LOAD_INT <= CPU_CORES / 2 )); then
-    # Load is 50% or less of cores -> keep same
-    REC_CPU=$CPU_CORES
-    echo -e "Status: ${GREEN}Load <= 50% of Cores (${LOAD_INT} <= $((CPU_CORES / 2)))${NC}"
-    echo -e "Action: ${GREEN}Keep same cores${NC}"
+elif (( LOAD_PERCENT >= 70 )); then
+    # Load is 70% or more of cores -> add 50% more cores
+    REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
+    echo -e "Status: ${YELLOW}Load ${LOAD_PERCENT}% >= 70% of cores${NC}"
+    echo -e "Action: ${YELLOW}Add 50% more cores${NC}"
 else
-    # Load is between 50% and 100% -> keep same
+    # Load is less than 70% of cores -> keep same
     REC_CPU=$CPU_CORES
-    echo -e "Status: ${GREEN}Load within normal range${NC}"
+    echo -e "Status: ${GREEN}Load ${LOAD_PERCENT}% < 70% of cores${NC}"
     echo -e "Action: ${GREEN}Keep same cores${NC}"
 fi
 
