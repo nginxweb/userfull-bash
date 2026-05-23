@@ -3,7 +3,7 @@
 # Script Name  : server-insight.sh
 # Author       : Eric Smith
 # Company      : ultahost.com
-# Description  : Hardware recommendations for hosting servers
+# Description  : Smart hardware recommendations based on actual usage
 # =====================================================
 
 # ---------------- COLORS ----------------
@@ -22,18 +22,58 @@ HOST=$(hostname)
 # ---------------- CPU ----------------
 CPU_CORES=$(nproc)
 LOAD_1=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | xargs)
-CPU_IDLE=$(top -bn1 | grep "Cpu(s)" | awk '{print $8}' | cut -d. -f1)
-CPU_USAGE=$((100 - CPU_IDLE))
-CPU_MODEL=$(lscpu | awk -F: '/Model name/ {print $2}' | sed 's/^[ \t]*//')
-LOAD_PER_CORE=$(echo "scale=2; $LOAD_1 / $CPU_CORES" | bc)
-CPU_UTIL_PCT=$(echo "scale=1; ($LOAD_1 / $CPU_CORES) * 100" | bc)
+
+# Convert load to integer for comparison
+LOAD_INT=$(printf "%.0f" "$LOAD_1")
+
+echo -e "\n${BLUE}----- CPU ANALYSIS -----${NC}"
+echo -e "Current CPU Cores : ${CYAN}$CPU_CORES${NC}"
+echo -e "Current Load      : ${CYAN}$LOAD_1${NC}"
+
+# CPU Logic: Compare load vs cores
+if (( LOAD_INT >= CPU_CORES )); then
+    # Load is equal to or higher than cores -> add 50%
+    REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
+    echo -e "Status: ${YELLOW}Load >= Cores (${LOAD_INT} >= ${CPU_CORES})${NC}"
+    echo -e "Action: ${YELLOW}Add 50% more cores${NC}"
+elif (( LOAD_INT <= CPU_CORES / 2 )); then
+    # Load is 50% or less of cores -> keep same
+    REC_CPU=$CPU_CORES
+    echo -e "Status: ${GREEN}Load <= 50% of Cores (${LOAD_INT} <= $((CPU_CORES / 2)))${NC}"
+    echo -e "Action: ${GREEN}Keep same cores${NC}"
+else
+    # Load is between 50% and 100% -> keep same
+    REC_CPU=$CPU_CORES
+    echo -e "Status: ${GREEN}Load within normal range${NC}"
+    echo -e "Action: ${GREEN}Keep same cores${NC}"
+fi
+
+echo -e "Recommended CPU   : ${CYAN}$REC_CPU cores${NC}"
 
 # ---------------- RAM ----------------
 read TOTAL_RAM_MB USED_RAM_MB <<< $(free -m | awk '/Mem:/ {print $2, $2-$7}')
 TOTAL_RAM_GB=$(echo "scale=2; $TOTAL_RAM_MB / 1024" | bc)
 USED_RAM_GB=$(echo "scale=2; $USED_RAM_MB / 1024" | bc)
-SWAP_USED=$(free -m | awk '/Swap:/ {print $3}')
 RAM_USAGE_PCT=$(echo "scale=0; ($USED_RAM_MB * 100) / $TOTAL_RAM_MB" | bc)
+
+echo -e "\n${BLUE}----- RAM ANALYSIS -----${NC}"
+echo -e "Current Total RAM : ${CYAN}${TOTAL_RAM_GB} GB${NC}"
+echo -e "Current Used RAM  : ${CYAN}${USED_RAM_GB} GB (${RAM_USAGE_PCT}%)${NC}"
+
+# RAM Logic: Check if used RAM is 70% or more of total
+if (( RAM_USAGE_PCT >= 70 )); then
+    # Used RAM is 70% or more -> add 50%
+    REC_RAM=$(echo "$TOTAL_RAM_GB * 1.5" | bc | awk '{print int($1)+1}')
+    echo -e "Status: ${YELLOW}RAM usage ${RAM_USAGE_PCT}% >= 70%${NC}"
+    echo -e "Action: ${YELLOW}Add 50% more RAM${NC}"
+else
+    # Used RAM is less than 70% -> keep same
+    REC_RAM=$(echo "$TOTAL_RAM_GB" | bc | awk '{print int($1)}')
+    echo -e "Status: ${GREEN}RAM usage ${RAM_USAGE_PCT}% < 70%${NC}"
+    echo -e "Action: ${GREEN}Keep same RAM${NC}"
+fi
+
+echo -e "Recommended RAM   : ${CYAN}$REC_RAM GB${NC}"
 
 # ---------------- DISK ----------------
 TOTAL_DISK_GB=$(df -BG --total | awk '/total/ {print $2}' | sed 's/G//')
@@ -42,190 +82,68 @@ TOTAL_DISK_TB=$(echo "scale=2; $TOTAL_DISK_GB / 1024" | bc)
 USED_DISK_TB=$(echo "scale=2; $USED_DISK_GB / 1024" | bc)
 DISK_USAGE_PCT=$(df --total | awk '/total/ {print $5}' | sed 's/%//')
 
-# ---------------- IO ----------------
-IO_UTIL=$(iostat -x 1 2 | awk '/Device/ {getline} {print $NF}' | sort -nr | head -1)
-IO_UTIL=${IO_UTIL:-0}
+echo -e "\n${BLUE}----- DISK ANALYSIS -----${NC}"
+echo -e "Current Total Disk: ${CYAN}${TOTAL_DISK_TB} TB${NC}"
+echo -e "Current Used Disk : ${CYAN}${USED_DISK_TB} TB (${DISK_USAGE_PCT}%)${NC}"
 
-# ---------------- CLASSIFICATION ----------------
-TYPE="Balanced"
-if (( CPU_USAGE > 70 )); then TYPE="CPU Intensive"; fi
-if (( RAM_USAGE_PCT > 75 )); then TYPE="Memory Intensive"; fi
-if (( DISK_USAGE_PCT > 70 )); then TYPE="Storage Intensive"; fi
-if (( $(echo "$IO_UTIL > 70" | bc -l) )); then TYPE="IO Intensive"; fi
-
-# ---------------- CPANEL ACCOUNTS ----------------
-CPANEL_INSTALLED=0
-CPANEL_ACCOUNTS=0
-if [ -x "/usr/local/cpanel/cpanel" ]; then
-  CPANEL_INSTALLED=1
-  CPANEL_ACCOUNTS=$(whmapi1 listaccts 2>/dev/null | grep -c "user:" || echo 0)
-fi
-
-# =====================================================
-# ========== RECOMMENDATION ENGINE ==========
-# =====================================================
-
-# ---------- CPU ----------
-if (( CPANEL_INSTALLED && CPANEL_ACCOUNTS > 0 )); then
-    MIN_CPU=$(( (CPANEL_ACCOUNTS / 40) + 2 ))
+# DISK Logic: Check if used disk is 70% or more of total
+if (( DISK_USAGE_PCT >= 70 )); then
+    # Used disk is 70% or more -> add 50% more space
+    REC_DISK_GB=$(echo "$TOTAL_DISK_GB * 1.5" | bc)
+    REC_DISK_TB=$(echo "scale=2; $REC_DISK_GB / 1024" | bc)
+    echo -e "Status: ${YELLOW}Disk usage ${DISK_USAGE_PCT}% >= 70%${NC}"
+    echo -e "Action: ${YELLOW}Add 50% more disk space${NC}"
 else
-    MIN_CPU=2
+    # Used disk is less than 70% -> keep same
+    REC_DISK_TB=$TOTAL_DISK_TB
+    echo -e "Status: ${GREEN}Disk usage ${DISK_USAGE_PCT}% < 70%${NC}"
+    echo -e "Action: ${GREEN}Keep same disk space${NC}"
 fi
 
-if (( $(echo "$LOAD_PER_CORE > 1.0" | bc -l) )); then
-    REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
-    IDEAL_CPU=$(echo "$CPU_CORES * 2" | bc | awk '{print int($1)+1}')
-elif (( $(echo "$LOAD_PER_CORE > 0.7" | bc -l) )); then
-    REC_CPU=$(echo "$CPU_CORES * 1.2" | bc | awk '{print int($1)+1}')
-    IDEAL_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
-else
-    REC_CPU=$CPU_CORES
-    IDEAL_CPU=$(echo "$CPU_CORES * 1.25" | bc | awk '{print int($1)+1}')
-fi
+echo -e "Recommended Disk  : ${CYAN}${REC_DISK_TB} TB${NC}"
 
-if (( REC_CPU < MIN_CPU )); then REC_CPU=$MIN_CPU; fi
-if (( IDEAL_CPU < MIN_CPU + 2 )); then IDEAL_CPU=$((MIN_CPU + 2)); fi
-
-# ---------- RAM (Fixed) ----------
-if (( CPANEL_INSTALLED && CPANEL_ACCOUNTS > 0 )); then
-    MIN_RAM=$(( (CPANEL_ACCOUNTS / 1) + 8 ))
-    IDEAL_RAM_BASE=$(( (CPANEL_ACCOUNTS * 2) + 8 ))
-else
-    MIN_RAM=4
-    IDEAL_RAM_BASE=8
-fi
-
-if (( RAM_USAGE_PCT > 75 )); then
-    REC_RAM=$(echo "$USED_RAM_GB * 1.5" | bc | awk '{print int($1)+1}')
-    IDEAL_RAM=$(echo "$USED_RAM_GB * 2" | bc | awk '{print int($1)+1}')
-elif (( RAM_USAGE_PCT > 50 )); then
-    REC_RAM=$(echo "$USED_RAM_GB * 1.25" | bc | awk '{print int($1)+1}')
-    IDEAL_RAM=$(echo "$USED_RAM_GB * 1.75" | bc | awk '{print int($1)+1}')
-else
-    REC_RAM=$(echo "$TOTAL_RAM_GB * 1.2" | bc | awk '{print int($1)+1}')
-    IDEAL_RAM=$(echo "$TOTAL_RAM_GB * 1.5" | bc | awk '{print int($1)+1}')
-fi
-
-if (( REC_RAM < MIN_RAM )); then REC_RAM=$MIN_RAM; fi
-if (( IDEAL_RAM < IDEAL_RAM_BASE )); then IDEAL_RAM=$IDEAL_RAM_BASE; fi
-
-# ---------- DISK ----------
-if (( CPANEL_INSTALLED && CPANEL_ACCOUNTS > 0 )); then
-    MIN_DISK_GB=$((CPANEL_ACCOUNTS * 15))
-    IDEAL_DISK_GB=$((CPANEL_ACCOUNTS * 30))
-else
-    MIN_DISK_GB=100
-    IDEAL_DISK_GB=200
-fi
-
-if (( DISK_USAGE_PCT > 70 )); then
-    REC_DISK_GB=$(echo "$USED_DISK_GB * 2" | bc)
-    IDEAL_DISK_GB=$(echo "$USED_DISK_GB * 3" | bc | awk '{print int($1)+100}')
-elif (( DISK_USAGE_PCT > 50 )); then
-    REC_DISK_GB=$(echo "$USED_DISK_GB * 1.5" | bc)
-    IDEAL_DISK_GB=$(echo "$USED_DISK_GB * 2.5" | bc | awk '{print int($1)+50}')
-else
-    REC_DISK_GB=$(echo "$TOTAL_DISK_GB * 1.3" | bc)
-    IDEAL_DISK_GB=$(echo "$TOTAL_DISK_GB * 2" | bc)
-fi
-
-if (( $(echo "$REC_DISK_GB < $MIN_DISK_GB" | bc -l) )); then
-    REC_DISK_GB=$MIN_DISK_GB
-fi
-if (( $(echo "$IDEAL_DISK_GB < $IDEAL_DISK_GB" | bc -l) )); then
-    IDEAL_DISK_GB=$IDEAL_DISK_GB
-fi
-
-REC_DISK_TB=$(echo "scale=1; $REC_DISK_GB / 1024" | bc)
-IDEAL_DISK_TB=$(echo "scale=1; $IDEAL_DISK_GB / 1024" | bc)
-
-# ---------------- REALISTIC MARKET VALUES (FIXED) ----------------
-CPU_OPTIONS=(4 6 8 12 16 20 24 32 40 48 64 80 96)
-REAL_CPU=$CPU_CORES
-REAL_IDEAL_CPU=$CPU_CORES
+# ---------------- REALISTIC MARKET VALUES ----------------
+# Round up to realistic market options
+CPU_OPTIONS=(4 6 8 12 16 20 24 32 40 48 64 80 96 128)
+REAL_REC_CPU=$REC_CPU
 for opt in "${CPU_OPTIONS[@]}"; do 
     if (( opt >= REC_CPU )); then 
-        REAL_CPU=$opt
-        break
-    fi
-done
-for opt in "${CPU_OPTIONS[@]}"; do 
-    if (( opt >= IDEAL_CPU )); then 
-        REAL_IDEAL_CPU=$opt
+        REAL_REC_CPU=$opt
         break
     fi
 done
 
-RAM_OPTIONS=(16 24 32 48 64 96 128 192 256 384 512 768 1024)
-REAL_RAM=16
-REAL_IDEAL_RAM=16
+RAM_OPTIONS=(8 16 24 32 48 64 96 128 192 256 384 512 768 1024)
+REAL_REC_RAM=$REC_RAM
 for ram in "${RAM_OPTIONS[@]}"; do 
     if (( ram >= REC_RAM )); then 
-        REAL_RAM=$ram
-        break
-    fi
-done
-for ram in "${RAM_OPTIONS[@]}"; do 
-    if (( ram >= IDEAL_RAM )); then 
-        REAL_IDEAL_RAM=$ram
+        REAL_REC_RAM=$ram
         break
     fi
 done
 
-DISK_OPTIONS=(0.5 1 2 3 4 6 8 10 12 16 20 24 32 40 48 64)
-REAL_DISK=0.5
-REAL_IDEAL_DISK=0.5
+DISK_OPTIONS=(0.5 1 2 3 4 6 8 10 12 16 20 24 32 40 48 64 80 100)
+REAL_REC_DISK=$REC_DISK_TB
 for d in "${DISK_OPTIONS[@]}"; do 
     if (( $(echo "$d >= $REC_DISK_TB" | bc -l) )); then 
-        REAL_DISK=$d
-        break
-    fi
-done
-for d in "${DISK_OPTIONS[@]}"; do 
-    if (( $(echo "$d >= $IDEAL_DISK_TB" | bc -l) )); then 
-        REAL_IDEAL_DISK=$d
+        REAL_REC_DISK=$d
         break
     fi
 done
 
-# ---------------- OUTPUT ----------------
-echo -e "\n${BLUE}----- CURRENT SYSTEM -----${NC}"
-echo -e "Host            : ${CYAN}$HOST${NC}"
-echo -e "CPU             : ${CPU_CORES} cores (${CPU_MODEL})"
-echo -e "Load            : ${LOAD_1} (${CPU_UTIL_PCT}% of capacity)"
-echo -e "RAM             : ${USED_RAM_GB} / ${TOTAL_RAM_GB} GB (${RAM_USAGE_PCT}%)"
-echo -e "Disk            : ${USED_DISK_TB} / ${TOTAL_DISK_TB} TB (${DISK_USAGE_PCT}%)"
-echo -e "I/O             : ${IO_UTIL}%"
-echo -e "Workload        : ${YELLOW}$TYPE${NC}"
+# ---------------- FINAL OUTPUT ----------------
+echo -e "\n${MAGENTA}===== FINAL RECOMMENDATION =====${NC}"
+echo -e "${CYAN}Recommended Hardware:${NC}"
+echo -e "  CPU : ${REAL_REC_CPU} cores"
+echo -e "  RAM : ${REAL_REC_RAM} GB"
+echo -e "  Disk: ${REAL_REC_DISK} TB"
 
-if (( CPANEL_INSTALLED && CPANEL_ACCOUNTS > 0 )); then
-    echo -e "cPanel Accounts : ${YELLOW}$CPANEL_ACCOUNTS${NC}"
-fi
-
-echo -e "\n${MAGENTA}----- RECOMMENDED HARDWARE -----${NC}"
-echo -e "${CYAN}Standard:${NC}"
-echo -e "  CPU : ${REAL_CPU} cores"
-echo -e "  RAM : ${REAL_RAM} GB"
-echo -e "  Disk: ${REAL_DISK} TB"
-
-echo -e "\n${CYAN}Ideal:${NC}"
-echo -e "  CPU : ${REAL_IDEAL_CPU} cores"
-echo -e "  RAM : ${REAL_IDEAL_RAM} GB"
-echo -e "  Disk: ${REAL_IDEAL_DISK} TB"
-
-# ---------------- ALERTS ----------------
-echo -e "\n${MAGENTA}----- NOTES -----${NC}"
-if (( DISK_USAGE_PCT > 70 )); then
-    echo -e "${YELLOW}⚠ Disk ${DISK_USAGE_PCT}% full - Upgrade recommended${NC}"
-fi
-if (( $(echo "$IO_UTIL > 70" | bc -l) )); then
-    echo -e "${YELLOW}⚠ High I/O (${IO_UTIL}%) - Consider NVMe/SSD${NC}"
-fi
-if (( SWAP_USED > 0 )); then
-    echo -e "${YELLOW}⚠ Swap in use - Memory pressure${NC}"
-fi
-if (( CPANEL_INSTALLED && CPANEL_ACCOUNTS > 0 )); then
-    echo -e "${CYAN}📊 Based on ${CPANEL_ACCOUNTS} cPanel accounts${NC}"
-fi
+# ---------------- SUMMARY TABLE ----------------
+echo -e "\n${BLUE}----- SUMMARY -----${NC}"
+printf "%-15s %-20s %-20s\n" "Component" "Current" "Recommended"
+printf "%-15s %-20s %-20s\n" "----------" "-------------------" "-------------------"
+printf "%-15s %-20s %-20s\n" "CPU" "${CPU_CORES} cores" "${REAL_REC_CPU} cores"
+printf "%-15s %-20s %-20s\n" "RAM" "${TOTAL_RAM_GB} GB" "${REAL_REC_RAM} GB"
+printf "%-15s %-20s %-20s\n" "Disk" "${TOTAL_DISK_TB} TB" "${REAL_REC_DISK} TB"
 
 echo ""
