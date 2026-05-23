@@ -28,7 +28,6 @@ echo -e "${CYAN}Date  : ${CURRENT_DATE}${NC}"
 CPU_CORES=$(nproc)
 LOAD_1=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | xargs)
 
-# Calculate load percentage relative to cores
 LOAD_PERCENT=$(echo "scale=2; ($LOAD_1 / $CPU_CORES) * 100" | bc)
 LOAD_PERCENT_INT=$(echo "$LOAD_PERCENT" | cut -d. -f1)
 
@@ -37,7 +36,6 @@ echo -e "Current CPU Cores : ${CYAN}$CPU_CORES${NC}"
 echo -e "Current Load      : ${CYAN}$LOAD_1${NC}"
 echo -e "Load Percentage   : ${CYAN}${LOAD_PERCENT}% of cores${NC}"
 
-# CPU Logic
 if (( LOAD_PERCENT_INT >= 90 )); then
     REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
     echo -e "Status: ${RED}Load ${LOAD_PERCENT}% >= 90% of cores${NC}"
@@ -81,7 +79,6 @@ echo -e "Recommended RAM   : ${CYAN}$REC_RAM GB${NC}"
 TOTAL_DISK_BYTES=0
 DISK_LIST=$(lsblk -d -b -o NAME,SIZE,TYPE 2>/dev/null | grep -E 'disk$' | awk '{print $2}')
 
-# If no physical disks found (like in some VMs), get all block devices
 if [ -z "$DISK_LIST" ]; then
     DISK_LIST=$(lsblk -b -o NAME,SIZE 2>/dev/null | grep -v "^NAME" | awk '{print $2}')
 fi
@@ -92,7 +89,6 @@ for size in $DISK_LIST; do
     fi
 done
 
-# If still zero, use df as fallback
 if [ "$TOTAL_DISK_BYTES" -eq 0 ]; then
     TOTAL_DISK_GB=$(df -BG --total 2>/dev/null | awk '/total/ {print $2}' | sed 's/G//')
     if [ -n "$TOTAL_DISK_GB" ]; then
@@ -100,13 +96,11 @@ if [ "$TOTAL_DISK_BYTES" -eq 0 ]; then
     fi
 fi
 
-# Convert to TB
 TOTAL_DISK_TB_RAW=$(echo "scale=2; $TOTAL_DISK_BYTES / 1024 / 1024 / 1024 / 1024" | bc)
 if [ -z "$TOTAL_DISK_TB_RAW" ] || [ "$TOTAL_DISK_TB_RAW" = "0" ]; then
     TOTAL_DISK_TB_RAW=0
 fi
 
-# Get used space from df
 USED_DISK_GB=$(df -BG --total 2>/dev/null | awk '/total/ {print $3}' | sed 's/G//')
 if [ -z "$USED_DISK_GB" ]; then
     USED_DISK_GB=0
@@ -117,7 +111,6 @@ if [ -z "$DISK_USAGE_PCT" ]; then
     DISK_USAGE_PCT=0
 fi
 
-# Show detailed disk info
 echo -e "\n${BLUE}----- DISK ANALYSIS -----${NC}"
 echo -e "${CYAN}Storage Devices Found:${NC}"
 if lsblk -d -o NAME,SIZE,MODEL 2>/dev/null | grep -E '^sd|^nvme|^vd|^hd' > /dev/null; then
@@ -133,7 +126,7 @@ fi
 echo -e "\nCurrent Total Storage: ${CYAN}${TOTAL_DISK_TB_RAW} TB${NC}"
 echo -e "Current Used Space   : ${CYAN}${USED_DISK_TB} TB (${DISK_USAGE_PCT}%)${NC}"
 
-# DISK Logic
+# DISK Logic - FIXED: Never recommend less than current
 if (( DISK_USAGE_PCT >= 70 )); then
     REC_DISK_TB=$(echo "$TOTAL_DISK_TB_RAW * 1.5" | bc)
     echo -e "Status: ${YELLOW}Disk usage ${DISK_USAGE_PCT}% >= 70%${NC}"
@@ -144,12 +137,19 @@ else
     echo -e "Action: ${GREEN}Keep same disk space${NC}"
 fi
 
-# Round up REC_DISK_TB
-REC_DISK_TB=$(echo "$REC_DISK_TB" | awk '{print int($1+0.5)}')
-if (( $(echo "$REC_DISK_TB < 1" | bc -l) )); then
-    REC_DISK_TB=1
+# FIXED: Ensure recommendation is never less than current
+if (( $(echo "$REC_DISK_TB < $TOTAL_DISK_TB_RAW" | bc -l) )); then
+    REC_DISK_TB=$TOTAL_DISK_TB_RAW
 fi
-if (( $(echo "$REC_DISK_TB == 0" | bc -l) )); then
+
+# Round up (but never below current)
+REC_DISK_TB_CEIL=$(echo "$REC_DISK_TB" | awk '{print int($1+0.5)}')
+if (( $(echo "$REC_DISK_TB_CEIL < $TOTAL_DISK_TB_RAW" | bc -l) )); then
+    REC_DISK_TB_CEIL=$(echo "$TOTAL_DISK_TB_RAW" | awk '{print int($1+0.5)}')
+fi
+REC_DISK_TB=$REC_DISK_TB_CEIL
+
+if (( $(echo "$REC_DISK_TB < 1" | bc -l) )); then
     REC_DISK_TB=1
 fi
 
@@ -174,14 +174,21 @@ for ram in "${RAM_OPTIONS[@]}"; do
     fi
 done
 
+# FIXED: Use proper bc comparison for disk options
 DISK_OPTIONS=(1 2 3 4 6 8 10 12 16 20 24 32 40 48 64 80 100)
 REAL_REC_DISK=$REC_DISK_TB
 for d in "${DISK_OPTIONS[@]}"; do 
-    if (( d >= REC_DISK_TB )); then 
+    if (( $(echo "$d >= $REC_DISK_TB" | bc -l) )); then 
         REAL_REC_DISK=$d
         break
     fi
 done
+
+# FIXED: Final safety check - never less than current
+CURRENT_DISK_INT=$(echo "$TOTAL_DISK_TB_RAW" | awk '{print int($1+0.5)}')
+if (( REAL_REC_DISK < CURRENT_DISK_INT )); then
+    REAL_REC_DISK=$CURRENT_DISK_INT
+fi
 
 # ---------------- FINAL OUTPUT ----------------
 echo -e "\n${MAGENTA}===== FINAL RECOMMENDATION =====${NC}"
