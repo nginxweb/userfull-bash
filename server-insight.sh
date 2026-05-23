@@ -28,8 +28,11 @@ echo -e "${CYAN}Date  : ${CURRENT_DATE}${NC}"
 CPU_CORES=$(nproc)
 LOAD_1=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | xargs)
 
-# Calculate load percentage relative to cores
-LOAD_PERCENT=$(echo "scale=0; ($LOAD_1 / $CPU_CORES) * 100" | bc)
+# Calculate load percentage relative to cores (FIXED)
+# Using bc with scale=2 for accurate decimal calculation
+LOAD_PERCENT=$(echo "scale=2; ($LOAD_1 / $CPU_CORES) * 100" | bc)
+# Convert to integer for comparison (remove decimal)
+LOAD_PERCENT_INT=$(echo "$LOAD_PERCENT" | cut -d. -f1)
 
 echo -e "\n${BLUE}----- CPU ANALYSIS -----${NC}"
 echo -e "Current CPU Cores : ${CYAN}$CPU_CORES${NC}"
@@ -37,11 +40,11 @@ echo -e "Current Load      : ${CYAN}$LOAD_1${NC}"
 echo -e "Load Percentage   : ${CYAN}${LOAD_PERCENT}% of cores${NC}"
 
 # CPU Logic: Check load percentage against cores
-if (( LOAD_PERCENT >= 90 )); then
+if (( LOAD_PERCENT_INT >= 90 )); then
     REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
     echo -e "Status: ${RED}Load ${LOAD_PERCENT}% >= 90% of cores${NC}"
     echo -e "Action: ${YELLOW}Add 50% more cores${NC}"
-elif (( LOAD_PERCENT >= 70 )); then
+elif (( LOAD_PERCENT_INT >= 70 )); then
     REC_CPU=$(echo "$CPU_CORES * 1.5" | bc | awk '{print int($1)+1}')
     echo -e "Status: ${YELLOW}Load ${LOAD_PERCENT}% >= 70% of cores${NC}"
     echo -e "Action: ${YELLOW}Add 50% more cores${NC}"
