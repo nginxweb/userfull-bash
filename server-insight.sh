@@ -76,34 +76,64 @@ fi
 
 echo -e "Recommended RAM   : ${CYAN}$REC_RAM GB${NC}"
 
-# ---------------- DISK (FIXED - Shows ALL physical disks) ----------------
-# Method 1: Get total of ALL physical disks (sda, sdb, nvme, vd, etc.)
+# ---------------- DISK ----------------
+# Get total of ALL physical disks
 TOTAL_DISK_BYTES=0
-DISK_LIST=$(lsblk -d -b -o NAME,SIZE,TYPE | grep -E 'disk$' | awk '{print $2}')
+DISK_LIST=$(lsblk -d -b -o NAME,SIZE,TYPE 2>/dev/null | grep -E 'disk$' | awk '{print $2}')
+
+# If no physical disks found (like in some VMs), get all block devices
+if [ -z "$DISK_LIST" ]; then
+    DISK_LIST=$(lsblk -b -o NAME,SIZE 2>/dev/null | grep -v "^NAME" | awk '{print $2}')
+fi
 
 for size in $DISK_LIST; do
-    TOTAL_DISK_BYTES=$((TOTAL_DISK_BYTES + size))
+    if [[ $size =~ ^[0-9]+$ ]]; then
+        TOTAL_DISK_BYTES=$((TOTAL_DISK_BYTES + size))
+    fi
 done
+
+# If still zero, use df as fallback
+if [ "$TOTAL_DISK_BYTES" -eq 0 ]; then
+    TOTAL_DISK_GB=$(df -BG --total 2>/dev/null | awk '/total/ {print $2}' | sed 's/G//')
+    if [ -n "$TOTAL_DISK_GB" ]; then
+        TOTAL_DISK_BYTES=$((TOTAL_DISK_GB * 1024 * 1024 * 1024))
+    fi
+fi
 
 # Convert to TB
 TOTAL_DISK_TB_RAW=$(echo "scale=2; $TOTAL_DISK_BYTES / 1024 / 1024 / 1024 / 1024" | bc)
+if [ -z "$TOTAL_DISK_TB_RAW" ] || [ "$TOTAL_DISK_TB_RAW" = "0" ]; then
+    TOTAL_DISK_TB_RAW=0
+fi
 
-# Method 2: Also get used space from df (for usage percentage)
-USED_DISK_GB=$(df -BG --total | awk '/total/ {print $3}' | sed 's/G//')
+# Get used space from df
+USED_DISK_GB=$(df -BG --total 2>/dev/null | awk '/total/ {print $3}' | sed 's/G//')
+if [ -z "$USED_DISK_GB" ]; then
+    USED_DISK_GB=0
+fi
 USED_DISK_TB=$(echo "scale=2; $USED_DISK_GB / 1024" | bc)
-DISK_USAGE_PCT=$(df --total | awk '/total/ {print $5}' | sed 's/%//')
+DISK_USAGE_PCT=$(df --total 2>/dev/null | awk '/total/ {print $5}' | sed 's/%//')
+if [ -z "$DISK_USAGE_PCT" ]; then
+    DISK_USAGE_PCT=0
+fi
 
 # Show detailed disk info
 echo -e "\n${BLUE}----- DISK ANALYSIS -----${NC}"
-echo -e "${CYAN}Physical Disks Found:${NC}"
-lsblk -d -o NAME,SIZE,MODEL 2>/dev/null | grep -E '^sd|^nvme|^vd' | while read line; do
-    echo -e "  ${GREEN}$line${NC}"
-done
+echo -e "${CYAN}Storage Devices Found:${NC}"
+if lsblk -d -o NAME,SIZE,MODEL 2>/dev/null | grep -E '^sd|^nvme|^vd|^hd' > /dev/null; then
+    lsblk -d -o NAME,SIZE,MODEL 2>/dev/null | grep -E '^sd|^nvme|^vd|^hd' | while read line; do
+        echo -e "  ${GREEN}$line${NC}"
+    done
+else
+    lsblk -o NAME,SIZE,TYPE 2>/dev/null | head -10 | while read line; do
+        echo -e "  ${GREEN}$line${NC}"
+    done
+fi
 
-echo -e "\nCurrent Total Disk (Physical): ${CYAN}${TOTAL_DISK_TB_RAW} TB${NC}"
-echo -e "Current Used Space (Filesystems): ${CYAN}${USED_DISK_TB} TB (${DISK_USAGE_PCT}%)${NC}"
+echo -e "\nCurrent Total Storage: ${CYAN}${TOTAL_DISK_TB_RAW} TB${NC}"
+echo -e "Current Used Space   : ${CYAN}${USED_DISK_TB} TB (${DISK_USAGE_PCT}%)${NC}"
 
-# DISK Logic - based on PHYSICAL total
+# DISK Logic
 if (( DISK_USAGE_PCT >= 70 )); then
     REC_DISK_TB=$(echo "$TOTAL_DISK_TB_RAW * 1.5" | bc)
     echo -e "Status: ${YELLOW}Disk usage ${DISK_USAGE_PCT}% >= 70%${NC}"
@@ -114,13 +144,16 @@ else
     echo -e "Action: ${GREEN}Keep same disk space${NC}"
 fi
 
-# Round up REC_DISK_TB to nearest 0.5
+# Round up REC_DISK_TB
 REC_DISK_TB=$(echo "$REC_DISK_TB" | awk '{print int($1+0.5)}')
 if (( $(echo "$REC_DISK_TB < 1" | bc -l) )); then
     REC_DISK_TB=1
 fi
+if (( $(echo "$REC_DISK_TB == 0" | bc -l) )); then
+    REC_DISK_TB=1
+fi
 
-echo -e "Recommended Disk  : ${CYAN}${REC_DISK_TB} TB${NC}"
+echo -e "Recommended Disk     : ${CYAN}${REC_DISK_TB} TB${NC}"
 
 # ---------------- REALISTIC MARKET VALUES ----------------
 CPU_OPTIONS=(4 6 8 12 16 20 24 32 40 48 64 80 96 128)
