@@ -86,7 +86,7 @@ fi
 if (( REC_CPU < MIN_CPU )); then REC_CPU=$MIN_CPU; fi
 if (( IDEAL_CPU < MIN_CPU + 2 )); then IDEAL_CPU=$((MIN_CPU + 2)); fi
 
-# ---------- RAM ----------
+# ---------- RAM (Fixed) ----------
 if (( CPANEL_INSTALLED && CPANEL_ACCOUNTS > 0 )); then
     MIN_RAM=$(( (CPANEL_ACCOUNTS / 1) + 8 ))
     IDEAL_RAM_BASE=$(( (CPANEL_ACCOUNTS * 2) + 8 ))
@@ -109,7 +109,7 @@ fi
 if (( REC_RAM < MIN_RAM )); then REC_RAM=$MIN_RAM; fi
 if (( IDEAL_RAM < IDEAL_RAM_BASE )); then IDEAL_RAM=$IDEAL_RAM_BASE; fi
 
-# ---------- DISK (CRITICAL FOR HOSTING) ----------
+# ---------- DISK ----------
 if (( CPANEL_INSTALLED && CPANEL_ACCOUNTS > 0 )); then
     MIN_DISK_GB=$((CPANEL_ACCOUNTS * 15))
     IDEAL_DISK_GB=$((CPANEL_ACCOUNTS * 30))
@@ -139,18 +139,54 @@ fi
 REC_DISK_TB=$(echo "scale=1; $REC_DISK_GB / 1024" | bc)
 IDEAL_DISK_TB=$(echo "scale=1; $IDEAL_DISK_GB / 1024" | bc)
 
-# ---------------- REALISTIC MARKET VALUES ----------------
-CPU_OPTIONS=(4 6 8 12 16 20 24 32 40 48 64)
-for opt in "${CPU_OPTIONS[@]}"; do if (( opt >= REC_CPU )); then REAL_CPU=$opt; break; fi; done
-for opt in "${CPU_OPTIONS[@]}"; do if (( opt >= IDEAL_CPU )); then REAL_IDEAL_CPU=$opt; break; fi; done
+# ---------------- REALISTIC MARKET VALUES (FIXED) ----------------
+CPU_OPTIONS=(4 6 8 12 16 20 24 32 40 48 64 80 96)
+REAL_CPU=$CPU_CORES
+REAL_IDEAL_CPU=$CPU_CORES
+for opt in "${CPU_OPTIONS[@]}"; do 
+    if (( opt >= REC_CPU )); then 
+        REAL_CPU=$opt
+        break
+    fi
+done
+for opt in "${CPU_OPTIONS[@]}"; do 
+    if (( opt >= IDEAL_CPU )); then 
+        REAL_IDEAL_CPU=$opt
+        break
+    fi
+done
 
-RAM_OPTIONS=(16 24 32 48 64 96 128 192 256 384 512)
-for ram in "${RAM_OPTIONS[@]}"; do if (( ram >= REC_RAM )); then REAL_RAM=$ram; break; fi; done
-for ram in "${RAM_OPTIONS[@]}"; do if (( ram >= IDEAL_RAM )); then REAL_IDEAL_RAM=$ram; break; fi; done
+RAM_OPTIONS=(16 24 32 48 64 96 128 192 256 384 512 768 1024)
+REAL_RAM=16
+REAL_IDEAL_RAM=16
+for ram in "${RAM_OPTIONS[@]}"; do 
+    if (( ram >= REC_RAM )); then 
+        REAL_RAM=$ram
+        break
+    fi
+done
+for ram in "${RAM_OPTIONS[@]}"; do 
+    if (( ram >= IDEAL_RAM )); then 
+        REAL_IDEAL_RAM=$ram
+        break
+    fi
+done
 
 DISK_OPTIONS=(0.5 1 2 3 4 6 8 10 12 16 20 24 32 40 48 64)
-for d in "${DISK_OPTIONS[@]}"; do if (( $(echo "$d >= $REC_DISK_TB" | bc -l) )); then REAL_DISK=$d; break; fi; done
-for d in "${DISK_OPTIONS[@]}"; do if (( $(echo "$d >= $IDEAL_DISK_TB" | bc -l) )); then REAL_IDEAL_DISK=$d; break; fi; done
+REAL_DISK=0.5
+REAL_IDEAL_DISK=0.5
+for d in "${DISK_OPTIONS[@]}"; do 
+    if (( $(echo "$d >= $REC_DISK_TB" | bc -l) )); then 
+        REAL_DISK=$d
+        break
+    fi
+done
+for d in "${DISK_OPTIONS[@]}"; do 
+    if (( $(echo "$d >= $IDEAL_DISK_TB" | bc -l) )); then 
+        REAL_IDEAL_DISK=$d
+        break
+    fi
+done
 
 # ---------------- OUTPUT ----------------
 echo -e "\n${BLUE}----- CURRENT SYSTEM -----${NC}"
