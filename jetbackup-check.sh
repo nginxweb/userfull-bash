@@ -63,26 +63,24 @@ check_cpanel_removal() {
     echo ""
 }
 
-# Function to check last successful backup
-check_last_backup() {
-    echo -e "${BLUE}[2] Checking last successful backup...${NC}"
+# Function to check last successful backup (Transferring account)
+check_last_successful_backup() {
+    echo -e "${BLUE}[2] Checking last successful backups (Transferring account to PBS)...${NC}"
     
-    # Search for backup transfer/completion
-    LAST_BACKUP=$(grep -r "$USERNAME" /usr/local/jetapps/var/log/jetbackup5/ --include="*.log" 2>/dev/null | \
-                  grep -E "Transferring account.*backup|Backup completed|backup.*finished" | \
-                  grep -v "Integrity check" | \
-                  sort -r | head -1)
+    # Get all successful backup dates
+    BACKUP_DATES=$(grep -h "Transferring account.*$USERNAME" /usr/local/jetapps/var/log/jetbackup5/queue/*.log 2>/dev/null | grep -oP '\[\K[0-9]{2}/[A-Za-z]{3}/[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}' | sort -r | uniq)
     
-    if [ -n "$LAST_BACKUP" ]; then
-        BACKUP_DATE=$(echo "$LAST_BACKUP" | grep -oP '\[\K[^\]]+' | head -1)
-        echo -e "${GREEN}✓ Last backup found: ${YELLOW}$BACKUP_DATE${NC}"
-        echo -e "  Details: $(echo "$LAST_BACKUP" | sed 's/.*\[PID[^\]]*\] //')"
+    if [ -n "$BACKUP_DATES" ]; then
+        echo -e "${GREEN}✓ Successful backups found:${NC}"
+        echo "$BACKUP_DATES" | while read line; do
+            echo -e "    ${YELLOW}📁 $line${NC}"
+        done
         
-        # Extract destination
-        DEST=$(echo "$LAST_BACKUP" | grep -oP 'destination "\K[^"]+' | head -1)
-        if [ -n "$DEST" ]; then
-            echo -e "  Destination: ${CYAN}$DEST${NC}"
-        fi
+        # Show count and latest
+        COUNT=$(echo "$BACKUP_DATES" | wc -l)
+        LATEST=$(echo "$BACKUP_DATES" | head -1)
+        echo -e "${GREEN}  → Total backups: ${YELLOW}$COUNT${NC}"
+        echo -e "${GREEN}  → Latest backup: ${YELLOW}$LATEST${NC}"
     else
         echo -e "${RED}✗ No successful backup found for this user${NC}"
     fi
@@ -149,16 +147,15 @@ check_pbs_destination() {
 
 # Function to check integrity checks (backup attempts)
 check_integrity_checks() {
-    echo -e "${BLUE}[5] Checking recent integrity checks (backup attempts)...${NC}"
+    echo -e "${BLUE}[5] Checking recent integrity checks (backup verification)...${NC}"
     
     INTEGRITY_CHECKS=$(grep -r "$USERNAME" /usr/local/jetapps/var/log/jetbackup5/ --include="*.log" 2>/dev/null | \
-                       grep "Integrity check" | tail -5)
+                       grep "Integrity check" | grep -oP '\[\K[0-9]{2}/[A-Za-z]{3}/[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}' | sort -r | uniq | head -10)
     
     if [ -n "$INTEGRITY_CHECKS" ]; then
-        echo -e "${YELLOW}  Last 5 integrity checks:${NC}"
+        echo -e "${YELLOW}  Last 10 integrity checks:${NC}"
         echo "$INTEGRITY_CHECKS" | while read line; do
-            CHECK_DATE=$(echo "$line" | grep -oP '\[\K[^\]]+' | head -1)
-            echo -e "    - $CHECK_DATE"
+            echo -e "    - $line"
         done
     else
         echo -e "  No integrity check records found"
@@ -186,13 +183,12 @@ show_timeline() {
     
     # Extract dates from previous checks
     REMOVE_DATE_RAW=$(grep "$USERNAME" /var/cpanel/accounting.log 2>/dev/null | grep -i "REMOVE" | head -1 | awk '{print $1, $2, $3}')
-    LAST_BACKUP_RAW=$(grep -r "$USERNAME" /usr/local/jetapps/var/log/jetbackup5/ --include="*.log" 2>/dev/null | \
-                      grep -E "Transferring account.*backup" | sort -r | head -1 | grep -oP '\[\K[^\]]+' | head -1)
+    LATEST_BACKUP=$(grep -h "Transferring account.*$USERNAME" /usr/local/jetapps/var/log/jetbackup5/queue/*.log 2>/dev/null | grep -oP '\[\K[0-9]{2}/[A-Za-z]{3}/[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}' | sort -r | uniq | head -1)
     ORPHAN_DELETE_RAW=$(grep -r "$USERNAME" /usr/local/jetapps/var/log/jetbackup5/ --include="*.log" 2>/dev/null | \
                         grep -i "Deleting orphan account" | grep -oP '\[\K[^\]]+' | head -1)
     
-    if [ -n "$LAST_BACKUP_RAW" ]; then
-        echo -e "${GREEN}Last successful backup:${NC}     $LAST_BACKUP_RAW"
+    if [ -n "$LATEST_BACKUP" ]; then
+        echo -e "${GREEN}Last successful backup:${NC}     $LATEST_BACKUP"
     else
         echo -e "${GREEN}Last successful backup:${NC}     ${RED}NOT FOUND${NC}"
     fi
@@ -200,7 +196,7 @@ show_timeline() {
     if [ -n "$REMOVE_DATE_RAW" ]; then
         echo -e "${RED}Account termination:${NC}          $REMOVE_DATE_RAW"
     else
-        echo -e "${RED}Account termination:${NC}          ${YELLOW}NOT FOUND IN LOGS${NC}"
+        echo -e "${RED}Account termination:${NC}          ${YELLOW}NOT FOUND IN LOGS (user may still exist)${NC}"
     fi
     
     if [ -n "$ORPHAN_DELETE_RAW" ]; then
@@ -243,17 +239,17 @@ recovery_suggestions() {
     echo ""
     echo -e "${BLUE}To prevent future issues:${NC}"
     echo -e "  - Before terminating account, take manual backup:"
-    echo -e "    ${YELLOW}/usr/local/jetapps/bin/jetbackup5 backup --account=$USERNAME${NC}"
+    echo -e "    ${YELLOW}/usr/bin/jetbackup5 --pkgacct $USERNAME${NC}"
     echo -e "  - Increase orphan retention period in JetBackup5 settings"
     echo -e "  - Implement pre-termination backup checklist"
     echo ""
     echo -e "${BLUE}To check PBS backup manually:${NC}"
-    echo -e "  ${YELLOW}grep -r \"$USERNAME\" /usr/local/jetapps/var/log/jetbackup5/ | grep -i \"pbs\" | grep -v \"Deleting\"${NC}"
+    echo -e "  ${YELLOW}grep -r \"Transferring account.*$USERNAME\" /usr/local/jetapps/var/log/jetbackup5/ | grep -oP '\\[\\K[^\\]]+' | sort -r${NC}"
 }
 
 # Main execution
 check_cpanel_removal
-check_last_backup
+check_last_successful_backup
 check_orphan_cleanup
 check_pbs_destination
 check_integrity_checks
