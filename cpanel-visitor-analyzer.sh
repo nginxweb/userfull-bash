@@ -232,31 +232,15 @@ analyze_combined_logs() {
         done
     echo ""
     
-    # 2. Top URLs (with more than 50 requests)
-    echo -e "${YELLOW}📂 Top URLs (with more than 50 requests):${NC}"
+    # 2. Top URLs - SHOW TOP 20 ONLY
+    echo -e "${YELLOW}📂 Top 20 URLs (by request count):${NC}"
     
-    local url_list=$(awk '{print $7}' "$temp_file" 2>/dev/null | grep -v '^$' | sort | uniq -c | sort -rn)
-    local has_high=false
-    local high_urls=""
-    local low_urls=""
+    local url_list=$(awk '{print $7}' "$temp_file" 2>/dev/null | grep -v '^$' | sort | uniq -c | sort -rn | head -20)
     
-    # Process each URL
-    while read count url; do
-        if [ -z "$count" ] || [ -z "$url" ]; then
-            continue
-        fi
-        
-        if [ "$count" -gt 50 ]; then
-            has_high=true
-            high_urls+="$count $url"$'\n'
-        else
-            low_urls+="$count $url"$'\n'
-        fi
-    done <<< "$url_list"
-    
-    # Display high-traffic URLs if any
-    if [ "$has_high" = true ]; then
-        echo "$high_urls" | while read count url; do
+    if [ -z "$url_list" ]; then
+        echo -e "  ${DIM}No URLs found${NC}"
+    else
+        echo "$url_list" | while read count url; do
             if [ -z "$count" ] || [ -z "$url" ]; then
                 continue
             fi
@@ -267,13 +251,7 @@ analyze_combined_logs() {
             else
                 color=$CYAN
             fi
-            printf "  ${WHITE}%-6s ${color}%s${NC}\n" "$count" "$url"
-        done
-    else
-        # If no URLs with >50 requests, show top 10
-        echo -e "  ${DIM}No URLs with more than 50 requests. Showing top 10:${NC}"
-        echo "$url_list" | head -10 | while read count url; do
-            printf "  ${WHITE}%-6s ${CYAN}%s${NC}\n" "$count" "$url"
+            printf "  ${WHITE}%-8s ${color}%s${NC}\n" "$count" "$url"
         done
     fi
     echo ""
@@ -453,7 +431,7 @@ show_help() {
     echo -e "  ${WHITE}•${NC} Shows list of all combined log files with details"
     echo -e "  ${WHITE}•${NC} Shows complete User-Agent strings (no truncation)"
     echo -e "  ${WHITE}•${NC} Shows complete URLs (no truncation)"
-    echo -e "  ${WHITE}•${NC} Only shows URLs with more than 50 requests"
+    echo -e "  ${WHITE}•${NC} ${GREEN}Shows TOP 20 URLs only${NC}"
     echo -e "  ${WHITE}•${NC} Shows today's request count"
     echo -e "  ${WHITE}•${NC} Detects suspicious activity and brute force"
     echo -e "  ${WHITE}•${NC} Shows top IPs, status codes, and methods"
